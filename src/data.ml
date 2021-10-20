@@ -6,8 +6,8 @@ module Member = TmpMember
 
 let config = Irmin_git.config ~bare:true Config.database_location
 
-let key_of_member Member.{joined_at; user; guild_id; _} =
-  let User.{id; username} = user in
+let key_of_member Member.{user; guild_id; _} =
+  let User.{id; username; _} = user in
   let guild_id = guild_id |> Guild_id.get_id |> string_of_int in
   let id = id |> User_id.get_id |> string_of_int in
   ["scores"; guild_id; username ^ id]
@@ -33,8 +33,6 @@ let repo = Store.Repo.v config
 
 open Lwt.Infix
 
-let master config = repo >>= Store.master
-
 let info message = Irmin_unix.info ~author:"Chat-botté" "%s" message
 
 let score member =
@@ -54,7 +52,7 @@ let add_to_score member points =
   let info = info message in
   Store.set ~info t key score
   >|= function
-  | Ok () -> () | Error e -> MLog.error "Could not write to database"
+  | Ok () -> () | Error _e -> MLog.error "Could not write to database"
 
 
 open Async
