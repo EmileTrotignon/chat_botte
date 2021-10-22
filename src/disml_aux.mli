@@ -1,11 +1,14 @@
 open Disml
-open Models
 open Async
 
-val guild_of_id : Guild_id.t -> Guild.t
+val guild_of_id : Models.Guild_id.t -> Models.Guild.t
 
-val message_of_id : Message_id.t -> Channel_id.t -> Message.t Deferred.t
+val message_of_id :
+  Models.Message_id.t -> Models.Channel_id.t -> Models.Message.t Deferred.Or_error.t
 
-val member_of_id : User_id.t -> Guild_id.t -> Member.t Deferred.t
+val member_of_id : Models.User_id.t -> Models.Guild_id.t -> Member.t Deferred.Or_error.t
 
-val member_of_user : User.t -> Guild_id.t -> Models.Member.t Deferred.t
+val member_of_user : Models.User.t -> Models.Guild_id.t -> Member.t Deferred.Or_error.t
+
+val members_of_role_id :
+  Models.Role_id.t -> Models.Guild_id.t -> Member.Set.t Deferred.t

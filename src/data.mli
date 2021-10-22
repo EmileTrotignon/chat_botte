@@ -1,5 +1,6 @@
-val score : Member.t -> int Async.Deferred.t
+open Disml
+open Models
 
-val add_to_score : Member.t -> int -> unit Async.Deferred.t
+val score_of_id : User_id.t -> Guild_id.t -> int Async.Deferred.t
 
-(* val scores : unit -> int Member.Map.t Async.Deferred.t *)
+val add_to_score : User_id.t -> Guild_id.t -> int -> unit Async.Deferred.t

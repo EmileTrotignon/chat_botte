@@ -12,13 +12,13 @@ let string_of_error e =
 
 let logged_reply message reply =
   let Message.{content; _} = message in
-  MLog.info @@ sprintf "Replying to message %S with %S." content reply ;
-  Message.reply message reply
-  >>> function
-  | Ok _ ->
-      MLog.info "Reply succesful."
-  | Error e ->
-      MLog.error @@ sprintf "Could not reply : %s." (string_of_error e)
+  MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
+  don't_wait_for
+  @@ match%map Message.reply message reply with
+     | Ok _ ->
+         MLog.info "Reply succesful."
+     | Error e ->
+         MLog.error {%eml|Could not reply : <%-string_of_error e%>.|}
 
 let score_of_emoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
@@ -27,34 +27,84 @@ let score_of_emoji (emoji : Emoji.partial_emoji) =
   | Some score ->
       score
 
-let get_score message =
-  let Message.{author; guild_id; _} = message in
+let score_message guild_id user =
+  Deferred.join
+  @@ let%map member = member_of_user user guild_id in
+     let%map score = Data.score_of_id user.id guild_id in
+     let module Let_syntax = Result in
+     let%map member = member in
+     {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
+
+let score_messages guild_id users =
+  let%map messages = Deferred.List.map ~f:(score_message guild_id) users in
+  let messages = Or_error.combine_errors messages in
+  let module Let_syntax = Result in
+  let%map messages = messages in
+  {%eml|<% List.iter (fun message -> %><%- message%>
+<%) messages ;%>|}
+
+let get_score message user =
+  don't_wait_for
+  @@
+  let Message.{guild_id; _} = message in
   let guild_id = Option.value_exn guild_id in
-  logged_reply message
-    (sprintf "Okay, querying score of %s" User.(author.username))
-  |> ignore ;
-  let member = member_of_user author guild_id in
-  member
-  >>> fun member ->
-  let nick = Option.value ~default:author.username member.nick in
-  Data.score member
-  >>> fun score ->
-  let reply = sprintf {|/!\ @everyone /!\ Score of <@%s> is %d.|} nick score in
-  logged_reply message reply
+  match%map score_message guild_id user with
+  | Error e ->
+      MLog.error (string_of_error e)
+  | Ok reply ->
+      logged_reply message reply
+
+let get_score_of_author message = get_score message Message.(message.author)
+
+let get_scores_of_mentions message =
+  don't_wait_for
+  @@
+  let Message.{mentions; mention_roles; guild_id; _} = message in
+  let guild_id = Option.value_exn guild_id in
+  let%bind mentions_through_role =
+    Deferred.List.map
+      ~f:(fun role -> members_of_role_id role guild_id)
+      mention_roles
+  in
+  let mentions_through_role =
+    mentions_through_role |> Member.Set.union_list |> Member.Set.elements
+    |> List.map ~f:(fun m -> Member.(m.user))
+  in
+  let mentions = List.append mentions mentions_through_role in
+  match%map score_messages guild_id mentions with
+  | Error e ->
+      MLog.error (string_of_error e)
+  | Ok reply ->
+      logged_reply message reply
+
+let get_scores_of_everyone message =
+  don't_wait_for
+  @@
+  let Message.{guild_id; _} = message in
+  let guild_id = Option.value_exn guild_id in
+  let%bind members = MCache.get_members guild_id in
+  let members = Member.Set.elements members in
+  let members = List.map ~f:(fun m -> m.user) members in
+  match%map score_messages guild_id members with
+  | Error e ->
+      MLog.error (string_of_error e)
+  | Ok reply ->
+      logged_reply message reply
 
 let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
     =
-  message_of_id message_id channel_id
-  >>> fun message ->
-  let user = Message.(message.author) in
-  (* Reacts by the author of the message are not taken into account *)
-  if Int.(User_id.get_id user_id <> User_id.get_id User.(user.id)) then
-    let guild_id = Option.value_exn guild_id in
-    let member = member_of_user user guild_id in
-    let score = score_of_emoji emoji in
-    let score = if remove then -score else score in
-    member
-    >>> fun member -> Data.add_to_score member score |> Async.don't_wait_for
+  don't_wait_for
+  @@ match%map message_of_id message_id channel_id with
+     | Error e ->
+         MLog.error (string_of_error e)
+     | Ok message ->
+         let user = Message.(message.author) in
+         (* Reacts by the author of the message are not taken into account *)
+         if Int.(User_id.get_id user_id <> User_id.get_id User.(user.id)) then
+           let guild_id = Option.value_exn guild_id in
+           let score = score_of_emoji emoji in
+           let score = if remove then -score else score in
+           Data.add_to_score user.id guild_id score |> don't_wait_for
 
 let update_score_add react =
   let Event.ReactionAdd.{user_id; guild_id; emoji; message_id; channel_id} =

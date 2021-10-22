@@ -25,3 +25,12 @@ include Self
 
 let visible_name member =
   Option.value ~default:User.(member.user.username) member.nick
+
+let ping_text member =
+  let id = User_id.get_id member.user.id in
+  {%eml|<@<%i- id %>>|}
+
+let has_role member role_id =
+  List.exists
+    ~f:(fun r -> Int.(Role_id.get_id r = Role_id.get_id role_id))
+    Member.(member.roles)

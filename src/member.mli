@@ -12,6 +12,10 @@ val compare : t -> t -> int
 
 val visible_name : t -> string
 
+val ping_text : t -> string
+
+val has_role : t -> Disml.Models.Role_id.t -> bool
+
 module Set : Set.S with type Elt.t = t
 
 module Map : Map.S with type Key.t = t
