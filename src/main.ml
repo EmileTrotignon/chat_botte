@@ -7,6 +7,8 @@ open Async
 
 (* Create a function to handle message_create. *)
 
+
+
 let check_command (message : Message.t) =
   let Message.{content; _} = message in
   (* if String.(is_prefix content ~prefix:"!members") then

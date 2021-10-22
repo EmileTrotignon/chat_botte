@@ -10,6 +10,9 @@ let string_of_error e =
   Error.pp Format.str_formatter e ;
   Format.flush_str_formatter ()
 
+let log_error reason error =
+  MLog.error {%eml|<%-reason%> : <%-string_of_error error%>.|}
+
 let logged_reply message reply =
   let Message.{content; _} = message in
   MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
@@ -18,7 +21,7 @@ let logged_reply message reply =
      | Ok _ ->
          MLog.info "Reply succesful."
      | Error e ->
-         MLog.error {%eml|Could not reply : <%-string_of_error e%>.|}
+         log_error "during reply" e
 
 let score_of_emoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
@@ -28,12 +31,11 @@ let score_of_emoji (emoji : Emoji.partial_emoji) =
       score
 
 let score_message guild_id user =
-  Deferred.join
-  @@ let%map member = member_of_user user guild_id in
-     let%map score = Data.score_of_id user.id guild_id in
-     let module Let_syntax = Result in
-     let%map member = member in
-     {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
+  let%bind member = member_of_user user guild_id in
+  let%map score = Data.score_of_id user.id guild_id in
+  let module Let_syntax = Result in
+  let%map member = member in
+  {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
 
 let score_messages guild_id users =
   let%map messages = Deferred.List.map ~f:(score_message guild_id) users in
@@ -50,7 +52,7 @@ let get_score message user =
   let guild_id = Option.value_exn guild_id in
   match%map score_message guild_id user with
   | Error e ->
-      MLog.error (string_of_error e)
+      log_error "While getting score of single user" e
   | Ok reply ->
       logged_reply message reply
 
@@ -73,7 +75,7 @@ let get_scores_of_mentions message =
   let mentions = List.append mentions mentions_through_role in
   match%map score_messages guild_id mentions with
   | Error e ->
-      MLog.error (string_of_error e)
+      log_error "While getting score of mentionned users" e
   | Ok reply ->
       logged_reply message reply
 
@@ -87,7 +89,7 @@ let get_scores_of_everyone message =
   let members = List.map ~f:(fun m -> m.user) members in
   match%map score_messages guild_id members with
   | Error e ->
-      MLog.error (string_of_error e)
+      log_error "While getting score of everyone" e
   | Ok reply ->
       logged_reply message reply
 
@@ -96,7 +98,7 @@ let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
   don't_wait_for
   @@ match%map message_of_id message_id channel_id with
      | Error e ->
-         MLog.error (string_of_error e)
+         log_error "While updating score" e
      | Ok message ->
          let user = Message.(message.author) in
          (* Reacts by the author of the message are not taken into account *)
