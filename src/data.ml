@@ -98,6 +98,8 @@ let score_of_key key = In_thread.run (fun () -> Lwt_main.run (score_of_key key))
 
 let score_of_id id guild_id = score_of_key (Key.of_ids id guild_id)
 
+let score_of_user user guild_id = score_of_id (User.(user.id)) guild_id
+
 let add_to_score id guild_id points =
   In_thread.run (fun () ->
       Lwt_main.run (add_to_score_of_key id guild_id points) )

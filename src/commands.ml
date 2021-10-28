@@ -23,7 +23,13 @@ let score_of_emoji (emoji : Emoji.partial_emoji) =
   | Some score ->
       score
 
-let score_message guild_id user =
+let score_message guild_id user score =
+  let%map member = member_of_user user guild_id in
+  let module Let_syntax = Result in
+  let%map member = member in
+  {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
+
+let score_message_of_user guild_id user =
   let%bind member = member_of_user user guild_id in
   let%map score = Data.score_of_id user.id guild_id in
   let module Let_syntax = Result in
@@ -31,7 +37,24 @@ let score_message guild_id user =
   {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
 
 let score_messages guild_id users =
-  let%map messages = Deferred.List.map ~f:(score_message guild_id) users in
+  let%bind scored_users =
+    Deferred.List.map
+      ~f:(fun user ->
+        Deferred.both (Deferred.return user) (Data.score_of_user user guild_id)
+        )
+      users
+  in
+  let scored_users =
+    List.sort
+      ~compare:(fun (_user1, score1) (_user2, score2) ->
+        -Int.compare score1 score2 )
+      scored_users
+  in
+  let%map messages =
+    Deferred.List.map
+      ~f:(fun (user, score) -> score_message guild_id user score)
+      scored_users
+  in
   let messages = Or_error.combine_errors messages in
   let module Let_syntax = Result in
   let%map messages = messages in
@@ -43,7 +66,7 @@ let get_score message user =
   @@
   let Message.{guild_id; _} = message in
   let guild_id = Option.value_exn guild_id in
-  match%map score_message guild_id user with
+  match%map score_message_of_user guild_id user with
   | Error e ->
       MLog.error_t "While getting score of single user" e
   | Ok reply ->
