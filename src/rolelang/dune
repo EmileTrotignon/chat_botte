@@ -1,0 +1,13 @@
+(library
+ (name rolelang)
+ (package chat_botte)
+ (libraries sedlex uutf menhirLib containers)
+ (inline_tests)
+ (preprocess
+  (pps sedlex.ppx ppx_inline_test))
+ (flags :standard -w +39))
+
+(menhir
+ (modules parser))
+
+(ocamllex (modules lexer))

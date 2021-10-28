@@ -2,6 +2,7 @@
  (name main)
  (public_name chat-botte)
  (libraries
+  rolelang
   disml
   sexplib
   astring

@@ -11,3 +11,11 @@ let log content =
 let info content = log "[Info] " ; log content ; log "\n"
 
 let error content = log "[Error] " ; log content ; log "\n"
+
+
+let string_of_error e =
+  Error.pp Format.str_formatter e ;
+  Format.flush_str_formatter ()
+
+let error_t reason e =
+  error {%eml|<%- reason %> : <%- string_of_error e %>.|}

@@ -7,18 +7,12 @@ open Async
 
 (* Create a function to handle message_create. *)
 
-
-
 let check_command (message : Message.t) =
   let Message.{content; _} = message in
-  (* if String.(is_prefix content ~prefix:"!members") then
-     don't_wait_for
-       (let guild_id = Option.value_exn Message.(message.guild_id) in
-        let%map members = MCache.get_members guild_id in
-        MLog.info
-          {%eml|<%Member.Set.iter ~f:(fun m ->%><%- Member.visible_name m %> <%) members ;%>|}
-       ) ; *)
-  if String.(is_prefix content ~prefix:"!score") then
+  if String.(content = "!udpate cache") then Commands.update_cache message
+  else if String.(is_prefix content ~prefix:"!🧠") then
+    Commands.get_smart_scores "!🧠" message
+  else if String.(is_prefix content ~prefix:"!score") then
     if String.(content = "!score") then Commands.get_score_of_author message
     else if String.(content = "!score @everyone") then
       Commands.get_scores_of_everyone message

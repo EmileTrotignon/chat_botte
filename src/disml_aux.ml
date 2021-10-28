@@ -39,3 +39,9 @@ let member_of_user user guild_id = member_of_id User.(user.id) guild_id
 let members_of_role_id role_id guild_id =
   let%map members = MCache.get_members guild_id in
   Member.Set.filter ~f:(fun m -> Member.has_role m role_id) members
+
+let role_of_id guild_id role_id =
+  let%map roles = MCache.get_roles guild_id in
+  List.find
+    ~f:(fun role -> Int.(Role.(Role_id.(get_id role.id = get_id role_id))))
+    roles

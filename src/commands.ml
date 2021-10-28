@@ -6,13 +6,6 @@ open Models
 module Member = TmpMember
 open Disml_aux
 
-let string_of_error e =
-  Error.pp Format.str_formatter e ;
-  Format.flush_str_formatter ()
-
-let log_error reason error =
-  MLog.error {%eml|<%-reason%> : <%-string_of_error error%>.|}
-
 let logged_reply message reply =
   let Message.{content; _} = message in
   MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
@@ -21,7 +14,7 @@ let logged_reply message reply =
      | Ok _ ->
          MLog.info "Reply succesful."
      | Error e ->
-         log_error "during reply" e
+         MLog.error_t "during reply" e
 
 let score_of_emoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
@@ -52,7 +45,7 @@ let get_score message user =
   let guild_id = Option.value_exn guild_id in
   match%map score_message guild_id user with
   | Error e ->
-      log_error "While getting score of single user" e
+      MLog.error_t "While getting score of single user" e
   | Ok reply ->
       logged_reply message reply
 
@@ -75,7 +68,7 @@ let get_scores_of_mentions message =
   let mentions = List.append mentions mentions_through_role in
   match%map score_messages guild_id mentions with
   | Error e ->
-      log_error "While getting score of mentionned users" e
+      MLog.error_t "While getting score of mentionned users" e
   | Ok reply ->
       logged_reply message reply
 
@@ -89,16 +82,43 @@ let get_scores_of_everyone message =
   let members = List.map ~f:(fun m -> m.user) members in
   match%map score_messages guild_id members with
   | Error e ->
-      log_error "While getting score of everyone" e
+      MLog.error_t "While getting score of everyone" e
   | Ok reply ->
       logged_reply message reply
+
+let get_smart_scores prefix message =
+  don't_wait_for
+  @@
+  let Message.{guild_id; content; _} = message in
+  let content = String.chop_prefix_exn ~prefix content in
+  let guild_id = Option.value_exn guild_id in
+  match Rolelang.parse content with
+  | Error (text, spos, epos) ->
+      Deferred.return
+      @@ logged_reply message
+           {%eml|<%-text%> from char <%i- spos.pos_cnum%> to  <%i- epos.pos_cnum%>.|}
+  | Ok rolelang_expr -> (
+      MLog.info "coucou" ;
+      MLog.info "coucou 2" ;
+      let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+      MLog.info "coucou 3" ;
+      let mentions =
+        mentions |> Member.Set.elements
+        |> List.map ~f:(fun m -> Member.(m.user))
+      in
+      MLog.info "coucou 4" ;
+      match%map score_messages guild_id mentions with
+      | Error e ->
+          MLog.error_t "While getting score of (smart) mentionned users" e
+      | Ok reply ->
+          logged_reply message reply )
 
 let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
     =
   don't_wait_for
   @@ match%map message_of_id message_id channel_id with
      | Error e ->
-         log_error "While updating score" e
+         MLog.error_t "While updating score" e
      | Ok message ->
          let user = Message.(message.author) in
          (* Reacts by the author of the message are not taken into account *)
@@ -119,3 +139,10 @@ let update_score_remove react =
     react
   in
   update_score ~remove:true user_id guild_id emoji message_id channel_id
+
+let update_cache message =
+  don't_wait_for
+  @@
+  let Message.{guild_id; _} = message in
+  let guild_id = Option.value_exn guild_id in
+  MCache.update_all guild_id
