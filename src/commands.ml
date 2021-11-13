@@ -182,8 +182,8 @@ let update_score_from_message guild_id add_score message =
   let score =
     List.fold_left ~init:0
       ~f:(fun acc react ->
-        let emoji = Reaction.(react.emoji) in
-        acc + score_of_emoji emoji )
+        let Reaction.{emoji; count; _} = react in
+        acc + (count * score_of_emoji emoji) )
       reacts
   in
   match%map member_of_user Message.(message.author) guild_id with
