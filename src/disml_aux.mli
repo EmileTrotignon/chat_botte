@@ -19,3 +19,5 @@ val members_of_role_id :
 
 val role_of_id :
   Models.Guild_id.t -> Models.Role_id.t -> Models.Role.t Deferred.Option.t
+
+val user_is_admin : Models.Guild_id.t -> Models.User.t -> bool Deferred.t

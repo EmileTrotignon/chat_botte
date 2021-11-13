@@ -4,19 +4,34 @@ module TmpMember = Member
 open Models
 module Member = TmpMember
 open Async
+open Disml_aux
 
 (* Create a function to handle message_create. *)
 
-let check_command (message : Message.t) =
-  let Message.{content; _} = message in
-  if String.(content = "!udpate cache") then Commands.update_cache message
-  else if String.(is_prefix content ~prefix:"!🧠") then
-    Commands.get_smart_scores "!🧠" message
-  else if String.(is_prefix content ~prefix:"!score") then
-    if String.(content = "!score") then Commands.get_score_of_author message
-    else if String.(content = "!score @everyone") then
-      Commands.get_scores_of_everyone message
-    else Commands.get_scores_of_mentions message
+let commands =
+  Message_command.
+    [ v "update cache" true `Admin Commands.update_cache
+    ; v "crunch" true `Admin Commands.crunch_scores
+    ; v "score" false `Member (Commands.get_smart_scores "score") ]
+
+let execute_commands commands message =
+  let Message.{content; author; guild_id; _} = message in
+  let guild_id = Option.value_exn guild_id in
+  don't_wait_for
+  @@ let%map is_admin = user_is_admin guild_id author in
+     commands
+     |> List.find ~f:(fun Message_command.{prefix; permission; exact; _} ->
+            let authorized =
+              match permission with `Admin -> is_admin | `Member -> true
+            in
+            authorized
+            &&
+            let command_prefix = Config.command_prefix ^ prefix in
+            if exact then String.(content = command_prefix)
+            else String.(is_prefix content ~prefix:"!score") )
+     |> Option.iter ~f:(fun Message_command.{command; _} -> command message)
+
+let check_command (message : Message.t) = execute_commands commands message
 
 let main () =
   (* Register the event handler *)

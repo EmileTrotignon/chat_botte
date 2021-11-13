@@ -16,12 +16,22 @@ let logged_reply message reply =
      | Error e ->
          MLog.error_t "during reply" e
 
-let score_of_emoji (emoji : Emoji.partial_emoji) =
+let score_of_pemoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
   | None ->
       0
   | Some score ->
       score
+
+let score_of_emoji (emoji : Emoji.t) =
+  match String.Map.find Config.reacts Emoji.(emoji.name) with
+  | None ->
+      0
+  | Some score ->
+      score
+(*
+let or_error_iter_both ~ok ~error v =
+  match v with Error e -> error e | Ok v -> ok v *)
 
 let score_message guild_id user score =
   let%map member = member_of_user user guild_id in
@@ -113,6 +123,7 @@ let get_smart_scores prefix message =
   don't_wait_for
   @@
   let Message.{guild_id; content; _} = message in
+  let prefix = Config.command_prefix ^ prefix in
   let content = String.chop_prefix_exn ~prefix content in
   let guild_id = Option.value_exn guild_id in
   match Rolelang.parse content with
@@ -121,15 +132,11 @@ let get_smart_scores prefix message =
       @@ logged_reply message
            {%eml|<%-text%> from char <%i- spos.pos_cnum%> to  <%i- epos.pos_cnum%>.|}
   | Ok rolelang_expr -> (
-      MLog.info "coucou" ;
-      MLog.info "coucou 2" ;
       let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
-      MLog.info "coucou 3" ;
       let mentions =
         mentions |> Member.Set.elements
         |> List.map ~f:(fun m -> Member.(m.user))
       in
-      MLog.info "coucou 4" ;
       match%map score_messages guild_id mentions with
       | Error e ->
           MLog.error_t "While getting score of (smart) mentionned users" e
@@ -147,7 +154,7 @@ let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
          (* Reacts by the author of the message are not taken into account *)
          if Int.(User_id.get_id user_id <> User_id.get_id User.(user.id)) then
            let guild_id = Option.value_exn guild_id in
-           let score = score_of_emoji emoji in
+           let score = score_of_pemoji emoji in
            let score = if remove then -score else score in
            Data.add_to_score user.id guild_id score |> don't_wait_for
 
@@ -169,3 +176,61 @@ let update_cache message =
   let Message.{guild_id; _} = message in
   let guild_id = Option.value_exn guild_id in
   MCache.update_all guild_id
+
+let update_score_from_message guild_id add_score message =
+  let reacts = Message.(message.reactions) in
+  let score =
+    List.fold_left ~init:0
+      ~f:(fun acc react ->
+        let emoji = Reaction.(react.emoji) in
+        acc + score_of_emoji emoji )
+      reacts
+  in
+  match%map member_of_user Message.(message.author) guild_id with
+  | Error e ->
+      MLog.error_t "While getting author of message" e
+  | Ok author ->
+      add_score score author
+
+let scores_from_history_channel guild_id add_score (channel : Channel.t) =
+  match channel with
+  | `GuildText text_channel ->
+      let title = Channel.(text_channel.name) in
+      MLog.info {%eml|Getting messages of channel <%-title%>|} ;
+      let%map () =
+        Message_history.iter_deferred
+          ~f:(update_score_from_message guild_id add_score)
+          channel
+      in
+      MLog.info {%eml|Messages of channel <%-title%> got.|}
+  | _ ->
+      Deferred.return ()
+
+let scores_from_history guild_id =
+  let guild = guild_of_id guild_id in
+  let channels = guild.channels in
+  let scores = Member.Hashtbl.create () in
+  let add_score score member =
+    let previous_score =
+      Option.value ~default:0 @@ Member.Hashtbl.find scores member
+    in
+    let score = score + previous_score in
+    Member.Hashtbl.set scores ~key:member ~data:score
+  in
+  let%map () =
+    channels
+    |> Deferred.List.iter ~f:(scores_from_history_channel guild_id add_score)
+  in
+  scores
+
+let set_scores guild_id scores =
+  Member.Hashtbl.fold ~init:(Deferred.return ()) scores
+    ~f:(fun ~key ~data acc ->
+      let%bind () = acc in
+      Data.set_score key.user.id guild_id data )
+
+let crunch_scores message =
+  let guild_id = Option.value_exn Message.(message.guild_id) in
+  don't_wait_for
+  @@ let%bind scores = scores_from_history guild_id in
+     set_scores guild_id scores

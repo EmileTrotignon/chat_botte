@@ -45,3 +45,11 @@ let role_of_id guild_id role_id =
   List.find
     ~f:(fun role -> Int.(Role.(Role_id.(get_id role.id = get_id role_id))))
     roles
+
+let user_is_admin guild_id user =
+  match%map member_of_user user guild_id with
+  | Error _ ->
+      false
+  | Ok member ->
+      List.exists Config.admin_roles ~f:(fun admin_role ->
+          Member.has_role member (`Role_id admin_role) )

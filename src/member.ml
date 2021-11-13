@@ -17,10 +17,14 @@ module Self = struct
       in
       if comp_guild <> 0 then comp_guild
       else compare (User_id.get_id m1.user.id) (User_id.get_id m2.user.id))
+
+  let hash m =
+    Hashtbl.hash (Guild_id.get_id m.guild_id, User_id.get_id m.user.id)
 end
 
 module Set = Set.Make (Self)
 module Map = Map.Make (Self)
+module Hashtbl = Hashtbl.Make (Self)
 include Self
 
 let visible_name member =
