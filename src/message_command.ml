@@ -3,12 +3,15 @@ open Models
 
 type permission = [`Member | `Admin]
 
-type elt =
-  { prefix: string
-  ; exact: bool
-  ; permission: permission
-  ; command: Message.t -> unit }
+type condition =
+  | Prefix of string
+  | ExactPrefix of string
+  | Any
+  | Substring of string
 
-let v prefix exact permission command = {prefix; permission; exact; command}
+type elt =
+  {condition: condition; permission: permission; command: Message.t -> unit}
+
+let v condition permission command = {condition; permission; command}
 
 type t = elt list

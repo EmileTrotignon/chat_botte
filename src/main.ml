@@ -10,9 +10,13 @@ open Disml_aux
 
 let commands =
   Message_command.
-    [ v "update cache" true `Admin Commands.update_cache
-    ; v "crunch" true `Admin Commands.crunch_scores
-    ; v "score" false `Member (Commands.get_smart_scores "score") ]
+    [ v (ExactPrefix "update cache") `Admin Commands.update_cache
+    ; v (ExactPrefix "crunch") `Admin Commands.crunch_scores
+    ; v (Prefix "score") `Member (Commands.get_smart_scores "score")
+    ; v (Substring "https://www.youtube.com/watch?v=gJirxeFwVzA") `Member
+        Commands.stupid_message
+    ; v (Substring "GASPAR") `Member Commands.stupid_message
+    ; v (Substring "CANAR") `Member Commands.stupid_message ]
 
 let execute_commands commands message =
   let Message.{content; author; guild_id; _} = message in
@@ -20,15 +24,23 @@ let execute_commands commands message =
   don't_wait_for
   @@ let%map is_admin = user_is_admin guild_id author in
      commands
-     |> List.find ~f:(fun Message_command.{prefix; permission; exact; _} ->
+     |> List.find ~f:(fun Message_command.{condition; permission; _} ->
             let authorized =
               match permission with `Admin -> is_admin | `Member -> true
             in
             authorized
             &&
-            let command_prefix = Config.command_prefix ^ prefix in
-            if exact then String.(content = command_prefix)
-            else String.(is_prefix content ~prefix:"!score") )
+            match condition with
+            | Any ->
+                true
+            | Prefix prefix ->
+                let command_prefix = Config.command_prefix ^ prefix in
+                String.(is_prefix content ~prefix:command_prefix)
+            | ExactPrefix prefix ->
+                let command_prefix = Config.command_prefix ^ prefix in
+                String.(content = command_prefix)
+            | Substring substring ->
+                String.is_substring ~substring content )
      |> Option.iter ~f:(fun Message_command.{command; _} -> command message)
 
 let check_command (message : Message.t) = execute_commands commands message

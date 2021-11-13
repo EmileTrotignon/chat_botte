@@ -234,3 +234,11 @@ let crunch_scores message =
   don't_wait_for
   @@ let%bind scores = scores_from_history guild_id in
      set_scores guild_id scores
+
+let stupid_message message =
+  don't_wait_for
+  @@ match%map Message.delete message with
+     | Error e ->
+         MLog.error_t "While deleting stupid message" e
+     | Ok () ->
+         MLog.info "stupid message deleted"

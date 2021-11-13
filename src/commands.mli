@@ -15,3 +15,5 @@ val update_score_remove : Event.ReactionRemove.t -> unit
 val update_cache : Message.t -> unit
 
 val crunch_scores : Message.t -> unit
+
+val stupid_message : Message.t -> unit
