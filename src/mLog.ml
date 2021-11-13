@@ -8,9 +8,13 @@ let log content =
   log stdout content ;
   log Config.log_file content
 
-let info content = log ("[Info] " ^ content ^ "\n")
+let time () =
+  Time.pp Format.str_formatter @@ Time.now () ;
+  Format.flush_str_formatter ()
 
-let error content = log ("[Error] " ^ content ^  "\n")
+let info content = log ("[Info][" ^ time () ^ "] " ^ content ^ "\n")
+
+let error content = log ("[Error][" ^ time () ^ "] " ^ content ^ "\n")
 
 let string_of_error e =
   Error.pp Format.str_formatter e ;
