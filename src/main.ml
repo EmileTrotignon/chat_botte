@@ -13,7 +13,7 @@ let commands =
     [ v (ExactPrefix "update cache") `Admin Commands.update_cache
     ; v (ExactPrefix "crunch") `Admin Commands.crunch_scores
     ; v (Prefix "score") `Member (Commands.get_smart_scores "score")
-    ; v (Substring "https://www.youtube.com/watch?v=gJirxeFwVzA") `Member
+    ; v (Substring "gJirxeFwVzA") `Member
         Commands.stupid_message
     ; v (Substring "GASPAR") `Member Commands.stupid_message
     ; v (Substring "CANAR") `Member Commands.stupid_message ]
