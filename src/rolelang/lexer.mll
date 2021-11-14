@@ -1,6 +1,6 @@
 { open Parser
 
-exception LexicalError of Lexing.position * Lexing.position
+exception LexicalError of string * Lexing.position * Lexing.position
 
 }
 
@@ -18,7 +18,7 @@ rule token  =
       token lexbuf }
   | "@everyone" {
       TId (Ast.Everyone)}
-| "<@" (number*) ">" {
+| "<@!" (number*) ">" {
       let matched = Lexing.lexeme lexbuf in
       let n = String.length matched in
       let id = String.sub matched 2 (n - 3) in
@@ -42,9 +42,10 @@ rule token  =
   | eof {
       EOM }
   | _ {
-      let pos_start = Lexing.lexeme_start_p lexbuf
+      let string = Lexing.lexeme lexbuf
+      and pos_start = Lexing.lexeme_start_p lexbuf
       and pos_end = Lexing.lexeme_end_p lexbuf in
-      raise (LexicalError (pos_start, pos_end)) }
+      raise (LexicalError (string, pos_start, pos_end)) }
 
 {
 }
