@@ -13,7 +13,7 @@ let eval_id guild_id id =
       MCache.get_members guild_id
   | Ast.User id -> (
       let user_id = `User_id id in
-      let member = member_of_id user_id guild_id in
+      let member = member_of_id guild_id user_id in
       match%map member with
       | Ok member ->
           Member.Set.singleton member
@@ -26,11 +26,10 @@ let eval_id guild_id id =
         | None ->
             Deferred.return Member.Set.empty
         | Some role ->
-            members_of_role_id role.id guild_id) )
+            members_of_role_id guild_id role.id) )
 
 let rec eval guild_id id =
-  let eval = eval guild_id
-  and eval_id = eval_id guild_id in
+  let eval = eval guild_id and eval_id = eval_id guild_id in
   Ast.(
     match id with
     | Id id ->

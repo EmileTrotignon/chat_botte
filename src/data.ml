@@ -15,7 +15,7 @@ module Key = struct
     let to_string (key : t) =
       {%eml|[<%List.iter (fun (s:string) -> (%><%- s %>; <%):string -> unit) key ;%>]|}
 
-    let of_ids id guild_id =
+    let of_ids guild_id id =
       let guild_id = guild_id |> Guild_id.get_id |> string_of_int
       and id = id |> User_id.get_id |> string_of_int in
       ["scores"; guild_id; id]
@@ -91,25 +91,25 @@ let set_score_of_key key score =
   >|= function
   | Ok () -> () | Error _e -> MLog.error "Could not write to database"
 
-let set_score_of_id id guild_id = set_score_of_key (Key.of_ids id guild_id)
+let set_score_of_id guild_id id = set_score_of_key (Key.of_ids guild_id id)
 
-let add_to_score_of_id id guild_id =
-  add_to_score_of_key (Key.of_ids id guild_id)
+let add_to_score_of_id guild_id id =
+  add_to_score_of_key (Key.of_ids guild_id id)
 
 open Async
 
 let score_of_key key = In_thread.run (fun () -> Lwt_main.run (score_of_key key))
 
-let score_of_id id guild_id = score_of_key (Key.of_ids id guild_id)
+let score_of_id guild_id id = score_of_key (Key.of_ids guild_id id)
 
-let score_of_user user guild_id = score_of_id User.(user.id) guild_id
+let score_of_user guild_id user = score_of_id guild_id User.(user.id)
 
-let add_to_score id guild_id points =
+let add_to_score guild_id id points =
   In_thread.run (fun () ->
-      Lwt_main.run (add_to_score_of_id id guild_id points) )
+      Lwt_main.run (add_to_score_of_id guild_id id points) )
 
-let set_score id guild_id score =
-  In_thread.run (fun () -> Lwt_main.run (set_score_of_id id guild_id score))
+let set_score guild_id id score =
+  In_thread.run (fun () -> Lwt_main.run (set_score_of_id guild_id id score))
 
 (*let scores () = In_thread.run (fun () -> Lwt_main.run (scores ()))
 

@@ -34,14 +34,14 @@ let or_error_iter_both ~ok ~error v =
   match v with Error e -> error e | Ok v -> ok v *)
 
 let score_message guild_id user score =
-  let%map member = member_of_user user guild_id in
+  let%map member = member_of_user guild_id user in
   let module Let_syntax = Result in
   let%map member = member in
   {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
 
 let score_message_of_user guild_id user =
-  let%bind member = member_of_user user guild_id in
-  let%map score = Data.score_of_id user.id guild_id in
+  let%bind member = member_of_user guild_id user in
+  let%map score = Data.score_of_id guild_id user.id in
   let module Let_syntax = Result in
   let%map member = member in
   {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
@@ -50,7 +50,7 @@ let score_messages guild_id users =
   let%bind scored_users =
     Deferred.List.map
       ~f:(fun user ->
-        Deferred.both (Deferred.return user) (Data.score_of_user user guild_id)
+        Deferred.both (Deferred.return user) (Data.score_of_user guild_id user)
         )
       users
   in
@@ -91,7 +91,7 @@ let get_scores_of_mentions message =
   let guild_id = Option.value_exn guild_id in
   let%bind mentions_through_role =
     Deferred.List.map
-      ~f:(fun role -> members_of_role_id role guild_id)
+      ~f:(fun role -> members_of_role_id guild_id role)
       mention_roles
   in
   let mentions_through_role =
@@ -156,7 +156,7 @@ let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
            let guild_id = Option.value_exn guild_id in
            let score = score_of_pemoji emoji in
            let score = if remove then -score else score in
-           Data.add_to_score user.id guild_id score |> don't_wait_for
+           Data.add_to_score guild_id user.id score |> don't_wait_for
 
 let update_score_add react =
   let Event.ReactionAdd.{user_id; guild_id; emoji; message_id; channel_id} =
@@ -186,7 +186,7 @@ let update_score_from_message guild_id add_score message =
         acc + (count * score_of_emoji emoji) )
       reacts
   in
-  match%map member_of_user Message.(message.author) guild_id with
+  match%map member_of_user guild_id Message.(message.author) with
   | Error e ->
       MLog.error_t "While getting author of message" e
   | Ok author ->
@@ -227,7 +227,7 @@ let set_scores guild_id scores =
   Member.Hashtbl.fold ~init:(Deferred.return ()) scores
     ~f:(fun ~key ~data acc ->
       let%bind () = acc in
-      Data.set_score key.user.id guild_id data )
+      Data.set_score guild_id key.user.id data )
 
 let crunch_scores message =
   let guild_id = Option.value_exn Message.(message.guild_id) in
