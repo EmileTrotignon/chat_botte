@@ -21,12 +21,11 @@ let eval_id guild_id id =
           Member.Set.empty )
   | Ast.Role id -> (
       let%bind role = role_of_id guild_id (`Role_id id) in
-      Role.(
-        match role with
-        | None ->
-            Deferred.return Member.Set.empty
-        | Some role ->
-            members_of_role_id guild_id role.id) )
+      match role with
+      | None ->
+          Deferred.return Member.Set.empty
+      | Some role ->
+          members_of_role_id guild_id @@ Role.id role )
 
 let rec eval guild_id id =
   let eval = eval guild_id and eval_id = eval_id guild_id in
