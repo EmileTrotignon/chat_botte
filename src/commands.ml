@@ -266,7 +266,7 @@ let rank_members message =
      let n_ranks = Array.length Config.Roles.ranks in
      List.iteri
        ~f:(fun i (member, _score) ->
-         (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / (n )) in
+         (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
           let%bind role = role_of_id guild_id role_id in
           match role with
           | None ->
@@ -274,10 +274,9 @@ let rank_members message =
               @@ MLog.error "While trying to retrieve a role from its id"
           | Some role -> (
               let role_repr = Role.name role in
-              if Member.has_role member role_id then
-                Deferred.return
-                @@ logged_reply message
-                     {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|}
+              if Member.has_role member role_id then Deferred.return ()
+                (* @@ logged_reply message
+                     {|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|} *)
               else
                 let%bind () = remove_roles Config.Roles.ranks member in
                 match%map Member.add_role ~role member with
