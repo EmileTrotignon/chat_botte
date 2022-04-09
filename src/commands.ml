@@ -235,6 +235,21 @@ let stupid_message message =
       MLog.info "stupid message deleted" )
   |> don't_wait_for
 
+let remove_roles roles member =
+  let guild_id = Member.guild_id member in
+  Deferred.Array.iter
+    ~f:(fun role ->
+      match%bind role_of_id guild_id (`Role_id role) with
+      | None ->
+          Deferred.return @@ MLog.error "Role not found"
+      | Some role -> (
+          match%map Member.remove_role ~role member with
+          | Error e ->
+              MLog.error_t "While removing role" e
+          | Ok () ->
+              () ) )
+    roles
+
 let rank_members message =
   let guild_id = Option.value_exn Message.(message.guild_id) in
   don't_wait_for
@@ -264,6 +279,7 @@ let rank_members message =
                 @@ logged_reply message
                      {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|}
               else
+                let%bind () = remove_roles Config.Roles.ranks member in
                 match%map Member.add_role ~role member with
                 | Error e ->
                     MLog.error_t "While adding role" e
