@@ -41,8 +41,8 @@ module Cached (A : I) = struct
 
   let get arg =
     match Mvar.peek value with
-    | Some members ->
-        Deferred.return members
+    | Some value ->
+        Deferred.return value
     | None ->
         don't_wait_for (update arg) ;
         let%map () = Mvar.value_available value in

@@ -1,5 +1,9 @@
 open Disml.Models
 
+val update_cached_members : Guild_id.t -> unit
+
+val update_cached_roles : Guild_id.t -> unit
+
 val get_score_of_author : Message.t -> unit
 
 val get_scores_of_mentions : Message.t -> unit

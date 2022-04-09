@@ -60,6 +60,25 @@ let check_command (message : Message.t) = execute_commands commands message
 
 let main () =
   (* Register the event handler *)
+  (Client.member_update :=
+     fun event ->
+       Commands.update_cached_members Event.GuildMemberUpdate.(event.guild_id)
+  ) ;
+  (Client.member_leave :=
+     fun event ->
+       Commands.update_cached_members Event.GuildMemberRemove.(event.guild_id)
+  ) ;
+  (Client.member_join :=
+     fun event -> Commands.update_cached_members Member.(event.guild_id) ) ;
+  (Client.role_create :=
+     fun event ->
+       Commands.update_cached_roles Event.GuildRoleCreate.(event.guild_id) ) ;
+  (Client.role_update :=
+     fun event ->
+       Commands.update_cached_roles Event.GuildRoleUpdate.(event.guild_id) ) ;
+  (Client.role_delete :=
+     fun event ->
+       Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id) ) ;
   Client.message_create := check_command ;
   Client.reaction_add := Commands.update_score_add ;
   Client.reaction_remove := Commands.update_score_remove ;

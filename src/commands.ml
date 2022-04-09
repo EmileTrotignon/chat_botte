@@ -6,6 +6,10 @@ open Models
 module Member = TmpMember
 open Disml_aux
 
+let update_cached_members guild_id =
+  don't_wait_for (MCache.update_members guild_id)
+
+let update_cached_roles guild_id = don't_wait_for (MCache.update_roles guild_id)
 
 let score_of_pemoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
