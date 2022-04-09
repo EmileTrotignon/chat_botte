@@ -17,3 +17,7 @@ val update_cache : Message.t -> unit
 val crunch_scores : Message.t -> unit
 
 val stupid_message : Message.t -> unit
+
+val rank_members : Message.t -> unit
+
+val chance_of_delete : Message.t -> unit

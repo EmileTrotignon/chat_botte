@@ -6,6 +6,26 @@ val log_file : out_channel
 
 val database_location : string
 
-val admin_roles : int list
+module Roles : sig
+  val admins : int list
+
+  val s : int
+
+  val a : int
+
+  val b : int
+
+  val c : int
+
+  val d : int
+
+  val e : int
+
+  val f : int
+
+  val ranks : int array
+
+  val warning : int
+end
 
 val command_prefix : string

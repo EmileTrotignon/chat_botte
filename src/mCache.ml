@@ -26,10 +26,6 @@ module Cached (A : I) = struct
   let value : (A.t, read_write) Mvar.t = Mvar.create ()
 
   let udpating : (bool, read_write) Mvar.t = Mvar.create ()
-  (*
-let last_message : (Message.t, read_write) Mvar.t = Mvar.create ()
-
-let set_last_message new_message = Mvar.set last_message new_message *)
 
   let update arg =
     let already_updating = Option.value ~default:false (Mvar.peek udpating) in

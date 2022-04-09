@@ -6,15 +6,6 @@ open Models
 module Member = TmpMember
 open Disml_aux
 
-let logged_reply message reply =
-  let Message.{content; _} = message in
-  MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
-  ( match%map Message.reply message reply with
-  | Ok _ ->
-      MLog.info "Reply succesful."
-  | Error e ->
-      MLog.error_t "during reply" e )
-  |> don't_wait_for
 
 let score_of_pemoji (emoji : Emoji.partial_emoji) =
   match String.Map.find Config.reacts Emoji.(emoji.name) with
@@ -135,7 +126,7 @@ let get_smart_scores prefix message =
        in
        match%map score_messages guild_id mentions with
        | Error e ->
-           MLog.error_t "While getting score of (smart) mentionned users" e
+           MLog.error_t "While getting score of mentionned users" e
        | Ok reply ->
            logged_reply message reply ) )
   |> don't_wait_for
@@ -239,3 +230,51 @@ let stupid_message message =
   | Ok () ->
       MLog.info "stupid message deleted" )
   |> don't_wait_for
+
+let rank_members message =
+  let guild_id = Option.value_exn Message.(message.guild_id) in
+  don't_wait_for
+  @@ let%bind members = MCache.get_members guild_id in
+     let%map members =
+       members |> Member.Set.elements
+       |> Deferred.List.map ~f:(fun member ->
+              Deferred.both (Deferred.return member)
+                (Data.score_of_user guild_id Member.(member.user)) )
+       |> Deferred.map
+            ~f:(List.sort ~compare:(fun (_, s1) (_, s2) -> compare s1 s2))
+     in
+     let n = List.length members in
+     let n_ranks = Array.length Config.Roles.ranks in
+     List.iteri
+       ~f:(fun i (member, _score) ->
+         (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
+          let%bind role = role_of_id guild_id role_id in
+          match role with
+          | None ->
+              Deferred.return
+              @@ MLog.error "While trying to retrieve a role from its id"
+          | Some role -> (
+              let role_repr = Role.name role in
+              if Member.has_role member role_id then
+                Deferred.return
+                @@ logged_reply message
+                     {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|}
+              else
+                match%map Member.add_role ~role member with
+                | Error e ->
+                    MLog.error_t "While adding role" e
+                | Ok () ->
+                    logged_reply message
+                      {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> now has rank <%- role_repr %>.|}
+              ) )
+         |> don't_wait_for )
+       members
+
+let chance_of_delete message =
+  if Random.int 3 = 0 then
+    don't_wait_for
+    @@ match%map Message.delete message with
+       | Error e ->
+           MLog.error_t "While removing message" e
+       | Ok () ->
+           ()

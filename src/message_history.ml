@@ -53,7 +53,7 @@ let iter ~f channel =
     Channel.send_message ~content:"Scanning this channel @.everyone" channel
   with
   | Error e ->
-      Deferred.return (MLog.error_t "While sending scanning message" e)
+      Deferred.return @@ MLog.error_t "While sending scanning message" e
   | Ok tmp_message -> (
       let tmp_message_id = Message.(tmp_message.id) in
       match%bind
@@ -89,7 +89,7 @@ let iter_deferred ~f channel =
     Channel.send_message ~content:"Scanning this channel @everyone" channel
   with
   | Error e ->
-      Deferred.return (MLog.error_t "While sending scanning message" e)
+      Deferred.return @@ MLog.error_t "While sending scanning message" e
   | Ok tmp_message -> (
       let tmp_message_id = Message.(tmp_message.id) in
       match%bind

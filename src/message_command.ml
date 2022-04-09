@@ -1,7 +1,7 @@
 open Disml
 open Models
 
-type permission = [`Member | `Admin]
+type permission = Member | Admin | HasRole of Role_id.t
 
 type condition =
   | Prefix of string

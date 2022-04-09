@@ -51,5 +51,46 @@ let user_is_admin guild_id user =
   | Error _ ->
       false
   | Ok member ->
-      List.exists Config.admin_roles ~f:(fun admin_role ->
+      List.exists Config.Roles.admins ~f:(fun admin_role ->
           Member.has_role member (`Role_id admin_role) )
+
+let length_limit = 2000
+
+let logged_reply message reply =
+  let Message.{content; _} = message in
+  MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
+  match%map Message.reply message reply with
+  | Ok _ ->
+      MLog.info "Reply succesful."
+  | Error e ->
+      MLog.error_t "during reply" e
+
+let long_reply message (content : string) =
+  don't_wait_for
+  @@
+  let content = String.split ~on:'\n' content in
+  let buffer = Buffer.create length_limit in
+  let empty_buffer () =
+    let content = Buffer.contents buffer in
+    Buffer.reset buffer ;
+    let n_replies = (String.length content / length_limit) + 1 in
+    Deferred.for_ 1 ~to_:n_replies ~do_:(fun i ->
+        let lo = (i - 1) * length_limit in
+        let hi = i * length_limit in
+        let hi = min (String.length content) hi in
+        logged_reply message (String.sub ~pos:lo ~len:(hi - lo) content) )
+  in
+  let%bind () =
+    Deferred.List.iter
+      ~f:(fun line ->
+        let line = line ^ "\n" in
+        if Buffer.length buffer + String.length line <= length_limit then
+          Deferred.return @@ Buffer.add_string buffer line
+        else
+          let%map () = empty_buffer () in
+          Buffer.add_string buffer line )
+      content
+  in
+  empty_buffer ()
+
+let logged_reply message reply = long_reply message reply
