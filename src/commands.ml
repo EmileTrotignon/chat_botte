@@ -266,7 +266,7 @@ let rank_members message =
      let n_ranks = Array.length Config.Roles.ranks in
      List.iteri
        ~f:(fun i (member, _score) ->
-         (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
+         (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / (n )) in
           let%bind role = role_of_id guild_id role_id in
           match role with
           | None ->
