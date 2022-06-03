@@ -15,6 +15,7 @@ let commands =
     ; v (ExactPrefix "score") Commands.get_score_of_author
     ; v (ExactPrefix "rank") Commands.rank_members
     ; v (Prefix "score") (Commands.get_smart_scores "score")
+    ; v (Prefix "affuble") (Commands.change_nick)
     ; v (Substring "gJirxeFwVzA") Commands.stupid_message
     ; v (Substring "GASPAR") Commands.stupid_message
     ; v (Substring "CANAR") Commands.stupid_message

@@ -31,3 +31,5 @@ module Roles : sig
 end
 
 val command_prefix : string
+
+val change_nick_cost : int

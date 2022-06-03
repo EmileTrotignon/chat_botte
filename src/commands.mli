@@ -27,3 +27,5 @@ val rank_members : Message.t -> unit
 val chance_of_delete : float -> Message.t -> unit
 
 val delete_message : Message.t -> unit
+
+val change_nick : Message.t -> unit
