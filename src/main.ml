@@ -10,16 +10,17 @@ open Disml_aux
 
 let commands =
   Message_command.
-    [ v (ExactPrefix "update cache") Admin Commands.update_cache
-    ; v (ExactPrefix "crunch") Admin Commands.crunch_scores
-    ; v (ExactPrefix "score") Member Commands.get_score_of_author
-    ; v (ExactPrefix "rank") Member Commands.rank_members
-    ; v (Prefix "score") Member (Commands.get_smart_scores "score")
-    ; v (Substring "gJirxeFwVzA") Member Commands.stupid_message
-    ; v (Substring "GASPAR") Member Commands.stupid_message
-    ; v (Substring "CANAR") Member Commands.stupid_message
-    ; v Any (HasRole (`Role_id Config.Roles.warning)) Commands.chance_of_delete
-    ]
+    [ v (And [ExactPrefix "update cache"; Admin]) Commands.update_cache
+    ; v (And [ExactPrefix "crunch"; Admin]) Commands.crunch_scores
+    ; v (ExactPrefix "score") Commands.get_score_of_author
+    ; v (ExactPrefix "rank") Commands.rank_members
+    ; v (Prefix "score") (Commands.get_smart_scores "score")
+    ; v (Substring "gJirxeFwVzA") Commands.stupid_message
+    ; v (Substring "GASPAR") Commands.stupid_message
+    ; v (Substring "CANAR") Commands.stupid_message
+    ; v
+        (HasRole (`Role_id Config.Roles.warning))
+        (Commands.chance_of_delete 0.33) ]
 
 let execute_commands commands message =
   let Message.{content; author; guild_id; _} = message in
@@ -30,36 +31,57 @@ let execute_commands commands message =
      | Error e ->
          MLog.error_t "While converting author to member " e
      | Ok member ->
+         let rec validates condition =
+           match condition with
+           | Message_command.Admin ->
+               is_admin
+           | Message_command.HasRole role_id ->
+               Member.has_role member role_id
+           | Message_command.Prefix prefix ->
+               let command_prefix = Config.command_prefix ^ prefix in
+               String.(is_prefix content ~prefix:command_prefix)
+           | Message_command.ExactPrefix prefix ->
+               let command_prefix = Config.command_prefix ^ prefix in
+               String.(content = command_prefix)
+           | Message_command.Any ->
+               true
+           | Message_command.Substring substring ->
+               String.is_substring ~substring content
+           | Message_command.Or li ->
+               List.exists ~f:validates li
+           | Message_command.And li ->
+               List.for_all ~f:validates li
+           | Message_command.Not cond ->
+               not (validates cond)
+         in
          commands
-         |> List.find ~f:(fun Message_command.{condition; permission; _} ->
-                let authorized =
-                  match permission with
-                  | Admin ->
-                      is_admin
-                  | Member ->
-                      true
-                  | HasRole role_id ->
-                      Member.has_role member role_id
-                in
-                authorized
-                &&
-                match condition with
-                | Any ->
-                    true
-                | Prefix prefix ->
-                    let command_prefix = Config.command_prefix ^ prefix in
-                    String.(is_prefix content ~prefix:command_prefix)
-                | ExactPrefix prefix ->
-                    let command_prefix = Config.command_prefix ^ prefix in
-                    String.(content = command_prefix)
-                | Substring substring ->
-                    String.is_substring ~substring content )
+         |> List.find ~f:(fun Message_command.{condition; _} ->
+                validates condition )
          |> Option.iter ~f:(fun Message_command.{command; _} -> command message)
 
-let check_command (message : Message.t) = execute_commands commands message
+let commands_edit =
+  Message_command.
+    [v (HasRole (`Role_id Config.Roles.edit_punished)) Commands.delete_message]
 
 let main () =
   (* Register the event handler *)
+  (Client.message_update :=
+     fun update ->
+       don't_wait_for
+       @@ let%map message =
+            Event.MessageUpdate.(message_of_id update.id update.channel_id)
+          in
+          (* Yojson.Safe.pretty_to_channel stdout
+             (Event.MessageUpdate.to_yojson update) ; *)
+          match message with
+          | Ok message ->
+              let message =
+                {message with guild_id= Event.MessageUpdate.(update.guild_id)}
+              in
+              (* Yojson.Safe.pretty_to_channel stdout (Message.to_yojson message) ; *)
+              execute_commands commands_edit message
+          | Error e ->
+              MLog.error_t "while convering message update to message" e ) ;
   (Client.member_update :=
      fun event ->
        Commands.update_cached_members Event.GuildMemberUpdate.(event.guild_id)
@@ -79,7 +101,7 @@ let main () =
   (Client.role_delete :=
      fun event ->
        Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id) ) ;
-  Client.message_create := check_command ;
+  Client.message_create := execute_commands commands ;
   Client.reaction_add := Commands.update_score_add ;
   Client.reaction_remove := Commands.update_score_remove ;
   (* Start the client. It's recommended to load the token from an env var or other config file. *)

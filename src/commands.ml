@@ -289,11 +289,49 @@ let rank_members message =
          |> don't_wait_for )
        members
 
-let chance_of_delete message =
-  if Random.int 3 = 0 then
+let chance_of_delete chance message =
+  if Float.(Random.float 1. < chance) then
     don't_wait_for
     @@ match%map Message.delete message with
        | Error e ->
            MLog.error_t "While removing message" e
        | Ok () ->
            ()
+
+let delete_message message =
+  don't_wait_for
+  @@ match%map Message.delete message with
+     | Error e ->
+         MLog.error_t "While removing message" e
+     | Ok () ->
+         ()
+
+
+(*
+let change_nick message =
+  (let Message.{guild_id; content; _} = message in
+   let prefix = "nick" in
+   let prefix = Config.command_prefix ^ prefix in
+   let prefix_size = String.length prefix in
+   let content = String.chop_prefix_exn ~prefix content in
+   let guild_id = Option.value_exn guild_id in
+   match Rolelang.parse content with
+   | Error (text, spos, epos) ->
+       Deferred.return
+       @@ logged_reply message
+            {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
+   | Ok rolelang_expr -> (
+       let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+       let mentions =
+         mentions |> Member.Set.elements
+         |> List.map ~f:(fun m -> Member.(m.user))
+       in
+       match mentions with
+       | [ member ] ->
+            Member
+       match%map score_messages guild_id mentions with
+       | Error e ->
+           MLog.error_t "While getting score of mentionned users" e
+       | Ok reply ->
+           logged_reply message reply ) )
+  |> don't_wait_for*)

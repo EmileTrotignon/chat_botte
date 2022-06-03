@@ -31,6 +31,10 @@ let rec eval guild_id id =
   let eval = eval guild_id and eval_id = eval_id guild_id in
   Ast.(
     match id with
+    | Not e ->
+        let%bind s1 = eval_id Everyone in
+        let%map s2 = eval e in
+        Member.Set.diff s1 s2
     | Id id ->
         eval_id id
     | Or (e1, e2) ->

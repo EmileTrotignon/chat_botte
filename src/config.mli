@@ -26,6 +26,8 @@ module Roles : sig
   val ranks : int array
 
   val warning : int
+
+  val edit_punished : int
 end
 
 val command_prefix : string
