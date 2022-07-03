@@ -306,9 +306,52 @@ let delete_message message =
      | Ok () ->
          ()
 
+let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
+  let%bind score = Data.score_of_user guild_id actor in
+  if score < cost then on_failure ()
+  else
+    let%map () = Data.add_to_score guild_id actor.id (-cost) in
+    action ()
+
+let send_dm message =
+  (let Message.{guild_id; content; _} = message in
+   let guild_id = Option.value_exn guild_id in
+   let prefix = "ping" in
+   let prefix = Config.command_prefix ^ prefix in
+   let prefix_size = String.length prefix in
+   let content = String.chop_prefix_exn ~prefix content in
+   let%bind dms = MCache.get_dms guild_id in
+   match Rolelang.parse content with
+   | Error (text, spos, epos) ->
+       Deferred.return
+       @@ logged_reply message
+            {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
+   | Ok rolelang_expr ->
+       let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+       let actor = Message.(message.author) in
+       do_with_cost ~guild_id ~cost:Config.dm_ping_cost ~actor
+         ~on_failure:(fun () ->
+           Deferred.return
+           @@ logged_reply message
+                "Commence par regarder ton score dans les yeux avant de \
+                 chercher a pinguer les autres." )
+         ~action:(fun () ->
+           Member.Set.iter mentions ~f:(fun member ->
+               member |> Member.user |> User.Map.find dms
+               |> Option.iter ~f:(fun channel ->
+                      ( match%map
+                          Channel.say "kikou tu as été pingué" channel
+                        with
+                      | Error e ->
+                          MLog.error_t "While sending dm" e
+                      | Ok _ ->
+                          () )
+                      |> don't_wait_for ) ) ) )
+  |> don't_wait_for
+
 let change_nick message =
   (let Message.{guild_id; content; _} = message in
-   let prefix = "nick" in
+   let prefix = "affuble" in
    let prefix = Config.command_prefix ^ prefix in
    let prefix_size = String.length prefix in
    let content = String.chop_prefix_exn ~prefix content in

@@ -33,3 +33,7 @@ end
 val command_prefix : string
 
 val change_nick_cost : int
+
+val dm_ping_cost : int
+
+val bot_owner: int

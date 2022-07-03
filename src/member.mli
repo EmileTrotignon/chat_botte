@@ -16,8 +16,4 @@ val ping_text : t -> string
 
 val has_role : t -> Disml.Models.Role_id.t -> bool
 
-module Set : Set.S with type Elt.t = t
-
-module Map : Map.S with type Key.t = t
-
 module Hashtbl : Hashtbl.S with type key = t

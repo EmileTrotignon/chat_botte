@@ -15,50 +15,53 @@ let commands =
     ; v (ExactPrefix "score") Commands.get_score_of_author
     ; v (ExactPrefix "rank") Commands.rank_members
     ; v (Prefix "score") (Commands.get_smart_scores "score")
-    ; v (Prefix "affuble") (Commands.change_nick)
+    ; v (Prefix "affuble") Commands.change_nick
     ; v (Substring "gJirxeFwVzA") Commands.stupid_message
     ; v (Substring "GASPAR") Commands.stupid_message
     ; v (Substring "CANAR") Commands.stupid_message
     ; v
         (HasRole (`Role_id Config.Roles.warning))
-        (Commands.chance_of_delete 0.33) ]
+        (Commands.chance_of_delete 0.33)
+    ; v (And [Prefix "ping"; Admin]) Commands.send_dm ]
 
 let execute_commands commands message =
   let Message.{content; author; guild_id; _} = message in
-  let guild_id = Option.value_exn guild_id in
-  don't_wait_for
-  @@ let%bind is_admin = user_is_admin guild_id author in
-     match%map member_of_user guild_id author with
-     | Error e ->
-         MLog.error_t "While converting author to member " e
-     | Ok member ->
-         let rec validates condition =
-           match condition with
-           | Message_command.Admin ->
-               is_admin
-           | Message_command.HasRole role_id ->
-               Member.has_role member role_id
-           | Message_command.Prefix prefix ->
-               let command_prefix = Config.command_prefix ^ prefix in
-               String.(is_prefix content ~prefix:command_prefix)
-           | Message_command.ExactPrefix prefix ->
-               let command_prefix = Config.command_prefix ^ prefix in
-               String.(content = command_prefix)
-           | Message_command.Any ->
-               true
-           | Message_command.Substring substring ->
-               String.is_substring ~substring content
-           | Message_command.Or li ->
-               List.exists ~f:validates li
-           | Message_command.And li ->
-               List.for_all ~f:validates li
-           | Message_command.Not cond ->
-               not (validates cond)
-         in
-         commands
-         |> List.find ~f:(fun Message_command.{condition; _} ->
-                validates condition )
-         |> Option.iter ~f:(fun Message_command.{command; _} -> command message)
+  guild_id
+  |> Option.iter ~f:(fun guild_id ->
+         don't_wait_for
+         @@ let%bind is_admin = user_is_admin guild_id author in
+            match%map member_of_user guild_id author with
+            | Error e ->
+                MLog.error_t "While converting author to member " e
+            | Ok member ->
+                let rec validates condition =
+                  match condition with
+                  | Message_command.Admin ->
+                      is_admin
+                  | Message_command.HasRole role_id ->
+                      Member.has_role member role_id
+                  | Message_command.Prefix prefix ->
+                      let command_prefix = Config.command_prefix ^ prefix in
+                      String.(is_prefix content ~prefix:command_prefix)
+                  | Message_command.ExactPrefix prefix ->
+                      let command_prefix = Config.command_prefix ^ prefix in
+                      String.(content = command_prefix)
+                  | Message_command.Any ->
+                      true
+                  | Message_command.Substring substring ->
+                      String.is_substring ~substring content
+                  | Message_command.Or li ->
+                      List.exists ~f:validates li
+                  | Message_command.And li ->
+                      List.for_all ~f:validates li
+                  | Message_command.Not cond ->
+                      not (validates cond)
+                in
+                commands
+                |> List.find ~f:(fun Message_command.{condition; _} ->
+                       validates condition )
+                |> Option.iter ~f:(fun Message_command.{command; _} ->
+                       command message ) )
 
 let commands_edit =
   Message_command.

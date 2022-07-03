@@ -18,7 +18,7 @@ rule token  =
   parse
   whitespace { token lexbuf }
   | "@everyone" { TId (Ast.Everyone) }
-  | "<@!" (number*) ">" {
+  | "<@" (number*) ">" {
       let matched = Lexing.lexeme lexbuf in
       let n = String.length matched in
       let id = String.sub matched 2 (n - 3) in

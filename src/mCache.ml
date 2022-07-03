@@ -82,11 +82,32 @@ module CachedRoles = Cached (struct
   let log_success new_roles =
     MLog.info {%eml|Successfully queryed <%i- List.length new_roles %> roles.|}
 
-  let log_failure e =
-    Error.pp Format.str_formatter e ;
-    let str = Buffer.contents Format.stdbuf in
-    Buffer.reset Format.stdbuf ;
-    MLog.error {%eml|Request roles failed : <%-str%>|}
+  let log_failure e = MLog.error_t "Request roles failed" e
+end)
+
+module CachedDM = Cached (struct
+  type t = Channel.t User.Map.t
+
+  type arg = Guild_id.t
+
+  let get_new guild_id : t Deferred.Or_error.t =
+    let%bind members = CachedMembers.get guild_id in
+    members |> Member.Set.to_list
+    |> Deferred.List.filter_map ~f:(fun member ->
+           let user = Member.user member in
+           let%map channel = User_id.create_dm user.id in
+           match channel with
+           | Error e ->
+               MLog.error_t "While opening a DM channel" e ;
+               None
+           | Ok channel ->
+               Some (user, channel) )
+    |> Deferred.map ~f:User.Map.of_alist_exn
+    |> Deferred.map ~f:Or_error.return
+
+  let log_success _new_channels = MLog.info {|Successfully opened DM channels|}
+
+  let log_failure e = MLog.error_t "While opening DM channels" e
 end)
 
 (*
@@ -102,6 +123,11 @@ let update_roles = CachedRoles.update
 
 let get_roles = CachedRoles.get
 
+let get_dms = CachedDM.get
+
+let update_dms = CachedDM.update
+
 let update_all guild_id =
   let%bind () = update_members guild_id in
+  let%bind () = update_dms guild_id in
   update_roles guild_id
