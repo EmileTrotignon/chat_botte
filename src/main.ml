@@ -22,7 +22,7 @@ let commands =
     ; v
         (HasRole (`Role_id Config.Roles.warning))
         (Commands.chance_of_delete 0.33)
-    ; v (And [Prefix "ping"; Admin]) Commands.send_dm ]
+    ; v (And [Prefix "ping"]) Commands.send_dm ]
 
 let execute_commands commands message =
   let Message.{content; author; guild_id; _} = message in
