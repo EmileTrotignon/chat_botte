@@ -115,4 +115,10 @@ let main () =
 
 let _ =
   (* Launch the Async scheduler. You must do this for anything to work. *)
-  Scheduler.go_main ~main ()
+  let rec aux () =
+    try Scheduler.go_main ~main ()
+    with exn ->
+      Exn.pp Format.err_formatter exn ;
+      aux ()
+  in
+  aux ()

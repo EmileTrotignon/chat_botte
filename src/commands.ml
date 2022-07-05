@@ -6,6 +6,19 @@ open Models
 module Member = TmpMember
 open Disml_aux
 
+let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
+  let%bind score = Data.score_of_user guild_id actor in
+  if score < cost then on_failure ()
+  else
+    let%map () = Data.add_to_score guild_id actor.id (-cost) in
+    action ()
+
+(*let or_log ~f ~message_error =
+  match f () with Ok () -> () | Error e -> MLog.error_t message_error e
+
+let deferred_or_log ~f ~message_error =
+  match%map f () with Ok () -> () | Error e -> MLog.error_t message_error e
+*)
 let update_cached_members guild_id =
   don't_wait_for (MCache.update_members guild_id)
 
@@ -305,13 +318,6 @@ let delete_message message =
          MLog.error_t "While removing message" e
      | Ok () ->
          ()
-
-let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
-  let%bind score = Data.score_of_user guild_id actor in
-  if score < cost then on_failure ()
-  else
-    let%map () = Data.add_to_score guild_id actor.id (-cost) in
-    action ()
 
 let send_dm message =
   (let Message.{guild_id; content; _} = message in
