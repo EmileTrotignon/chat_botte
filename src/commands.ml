@@ -381,30 +381,37 @@ let change_nick message =
            match mentions with
            | [member] -> (
                let author = Message.(message.author) in
-               match%bind member_of_user guild_id member with
-               | Error e ->
-                   Deferred.return
-                   @@ MLog.error_t "while converting user to member" e
-               | Ok member ->
-                   Deferred.join
-                   @@ do_with_cost ~guild_id ~cost:Config.change_nick_cost
-                        ~actor:author
-                        ~on_failure:(fun () ->
-                          Deferred.return
-                          @@ logged_reply message
-                               "Commence par regarder ton score dans les yeux \
-                                avant de chercher a affubler les autres." )
-                        ~action:(fun () ->
-                          let%bind () =
-                            Data.add_to_score guild_id author.id
-                              (-Config.change_nick_cost)
-                          in
-                          match%map Member.change_nick member new_nick with
-                          | Ok () ->
-                              logged_reply message
-                                "Tu as bien affublé ce gros bouffon."
-                          | Error e ->
-                              MLog.error_t "while affubling" e ) )
+               if User.(compare author member = 0) then
+                 Deferred.return
+                 @@ logged_reply message
+                      "Impossible de s'affubler soi-même, essaye plutot de \
+                       pleurer chez Coutarel."
+               else
+                 match%bind member_of_user guild_id member with
+                 | Error e ->
+                     Deferred.return
+                     @@ MLog.error_t "while converting user to member" e
+                 | Ok member ->
+                     Deferred.join
+                     @@ do_with_cost ~guild_id ~cost:Config.change_nick_cost
+                          ~actor:author
+                          ~on_failure:(fun () ->
+                            Deferred.return
+                            @@ logged_reply message
+                                 "Commence par regarder ton score dans les \
+                                  yeux avant de chercher a affubler les \
+                                  autres." )
+                          ~action:(fun () ->
+                            let%bind () =
+                              Data.add_to_score guild_id author.id
+                                (-Config.change_nick_cost)
+                            in
+                            match%map Member.change_nick member new_nick with
+                            | Ok () ->
+                                logged_reply message
+                                  "Tu as bien affublé ce gros bouffon."
+                            | Error e ->
+                                MLog.error_t "while affubling" e ) )
            | _ :: _ ->
                Deferred.return
                @@ logged_reply message
