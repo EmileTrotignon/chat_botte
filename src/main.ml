@@ -67,58 +67,69 @@ let commands_edit =
   Message_command.
     [v (HasRole (`Role_id Config.Roles.edit_punished)) Commands.delete_message]
 
-let main () =
+let rec main () =
   (* Register the event handler *)
-  (Client.message_update :=
-     fun update ->
-       don't_wait_for
-       @@ let%map message =
-            Event.MessageUpdate.(message_of_id update.id update.channel_id)
-          in
-          (* Yojson.Safe.pretty_to_channel stdout
-             (Event.MessageUpdate.to_yojson update) ; *)
-          match message with
-          | Ok message ->
-              let message =
-                {message with guild_id= Event.MessageUpdate.(update.guild_id)}
-              in
-              (* Yojson.Safe.pretty_to_channel stdout (Message.to_yojson message) ; *)
-              execute_commands commands_edit message
-          | Error e ->
-              MLog.error_t "while convering message update to message" e ) ;
-  (Client.member_update :=
-     fun event ->
-       Commands.update_cached_members Event.GuildMemberUpdate.(event.guild_id)
-  ) ;
-  (Client.member_leave :=
-     fun event ->
-       Commands.update_cached_members Event.GuildMemberRemove.(event.guild_id)
-  ) ;
-  (Client.member_join :=
-     fun event -> Commands.update_cached_members Member.(event.guild_id) ) ;
-  (Client.role_create :=
-     fun event ->
-       Commands.update_cached_roles Event.GuildRoleCreate.(event.guild_id) ) ;
-  (Client.role_update :=
-     fun event ->
-       Commands.update_cached_roles Event.GuildRoleUpdate.(event.guild_id) ) ;
-  (Client.role_delete :=
-     fun event ->
-       Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id) ) ;
-  Client.message_create := execute_commands commands ;
-  Client.reaction_add := Commands.update_score_add ;
-  Client.reaction_remove := Commands.update_score_remove ;
-  (* Start the client. It's recommended to load the token from an env var or other config file. *)
-  Async.Deferred.don't_wait_for
-  @@ let%map _client = Client.start Config.token in
-     MLog.info "Connected successfully"
+  let%bind result =
+    Async.try_with (fun () ->
+        (Client.message_update :=
+           fun update ->
+             don't_wait_for
+             @@ let%map message =
+                  Event.MessageUpdate.(
+                    message_of_id update.id update.channel_id)
+                in
+                (* Yojson.Safe.pretty_to_channel stdout
+                   (Event.MessageUpdate.to_yojson update) ; *)
+                match message with
+                | Ok message ->
+                    let message =
+                      { message with
+                        guild_id= Event.MessageUpdate.(update.guild_id) }
+                    in
+                    (* Yojson.Safe.pretty_to_channel stdout (Message.to_yojson message) ; *)
+                    execute_commands commands_edit message
+                | Error e ->
+                    MLog.error_t "while convering message update to message" e
+        ) ;
+        (Client.member_update :=
+           fun event ->
+             Commands.update_cached_members
+               Event.GuildMemberUpdate.(event.guild_id) ) ;
+        (Client.member_leave :=
+           fun event ->
+             Commands.update_cached_members
+               Event.GuildMemberRemove.(event.guild_id) ) ;
+        (Client.member_join :=
+           fun event -> Commands.update_cached_members Member.(event.guild_id)
+        ) ;
+        (Client.role_create :=
+           fun event ->
+             Commands.update_cached_roles Event.GuildRoleCreate.(event.guild_id)
+        ) ;
+        (Client.role_update :=
+           fun event ->
+             Commands.update_cached_roles Event.GuildRoleUpdate.(event.guild_id)
+        ) ;
+        (Client.role_delete :=
+           fun event ->
+             Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id)
+        ) ;
+        Client.message_create := execute_commands commands ;
+        Client.reaction_add := Commands.update_score_add ;
+        Client.reaction_remove := Commands.update_score_remove ;
+        (* Start the client. It's recommended to load the token from an env var or other config file. *)
+        let%map _client = Client.start Config.token in
+        MLog.info "Connected successfully" )
+  in
+  match result with
+  | Ok () ->
+      Deferred.return ()
+  | Error exn ->
+      Exn.pp Format.err_formatter exn ;
+      main ()
+
+let main () = don't_wait_for (main ())
 
 let _ =
   (* Launch the Async scheduler. You must do this for anything to work. *)
-  let rec aux () =
-    try Scheduler.go_main ~main ()
-    with exn ->
-      Exn.pp Format.err_formatter exn ;
-      aux ()
-  in
-  aux ()
+  Scheduler.go_main ~main ()
