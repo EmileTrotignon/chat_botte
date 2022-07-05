@@ -335,7 +335,9 @@ let send_dm message =
    | Ok rolelang_expr ->
        let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
        let actor = Message.(message.author) in
-       do_with_cost ~guild_id ~cost:Config.dm_ping_cost ~actor
+       do_with_cost ~guild_id
+         ~cost:(Config.dm_ping_cost * Member.Set.length mentions)
+         ~actor
          ~on_failure:(fun () ->
            logged_reply message
              "Commence par regarder ton score dans les yeux avant de chercher \
