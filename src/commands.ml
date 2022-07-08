@@ -12,13 +12,13 @@ let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
   else
     let%map () = Data.add_to_score guild_id actor.id (-cost) in
     action ()
+(*
+let or_log ~f ~message_error =
+  match f () with Ok () -> () | Error e -> MLog.error_t message_error e
 
-(*let or_log ~f ~message_error =
-    match f () with Ok () -> () | Error e -> MLog.error_t message_error e
+let deferred_or_log ~f ~message_error =
+  match%map f () with Ok () -> () | Error e -> MLog.error_t message_error e *)
 
-  let deferred_or_log ~f ~message_error =
-    match%map f () with Ok () -> () | Error e -> MLog.error_t message_error e
-*)
 let update_cached_members guild_id =
   don't_wait_for (MCache.update_members guild_id)
 
@@ -327,7 +327,17 @@ let send_dm message =
    let prefix_size = String.length prefix in
    let content = String.chop_prefix_exn ~prefix content in
    let%bind dms = MCache.get_dms guild_id in
-   match Rolelang.parse content with
+   let roleexpr, answer_content =
+     match String.lsplit2 content ~on:'=' with
+     | None ->
+         (content, "kikou tu as été pingué")
+     | Some (roleexpr, answer_content) ->
+         (roleexpr, answer_content)
+   in
+   let answer_content =
+     answer_content ^ sprintf "\n%s" (Message.link message)
+   in
+   match Rolelang.parse roleexpr with
    | Error (text, spos, epos) ->
        Deferred.return
        @@ logged_reply message
@@ -345,15 +355,19 @@ let send_dm message =
          ~action:(fun () ->
            Member.Set.iter mentions ~f:(fun member ->
                member |> Member.user |> User.Map.find dms
-               |> Option.iter ~f:(fun channel ->
-                      ( match%map
-                          Channel.say "kikou tu as été pingué" channel
-                        with
-                      | Error e ->
-                          MLog.error_t "While sending dm" e
-                      | Ok _ ->
-                          () )
-                      |> don't_wait_for ) ) ) )
+               |> (function
+                    | None ->
+                        let block_bot_cost = -10 in
+                        logged_reply message
+                          {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
+                        Data.add_to_score guild_id member.user.id block_bot_cost
+                    | Some channel -> (
+                        match%map Channel.say answer_content channel with
+                        | Error e ->
+                            MLog.error_t "While sending dm" e
+                        | Ok _ ->
+                            () ) )
+               |> don't_wait_for ) ) )
   |> don't_wait_for
 
 let change_nick message =
