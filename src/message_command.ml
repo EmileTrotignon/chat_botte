@@ -1,5 +1,6 @@
 open Disml
 open Models
+open Async
 
 type condition =
   | Admin
@@ -12,8 +13,71 @@ type condition =
   | And of condition list
   | Not of condition
 
-type elt = {condition: condition; command: Message.t -> unit}
+type elt =
+  {condition: condition; command: Message.t -> unit; description: string}
 
-let v condition command = {condition; command}
+let role_id (`Role_id id) = PPPrint.(!^(Printf.sprintf "%s%i%s" "<@" id "%s"))
+
+let rec print_condition cond =
+  PPPrint.(
+    group
+    @@
+    match cond with
+    | Admin ->
+        !^"est un admin"
+    | HasRole id ->
+        !^"possède le role " ^-^ role_id id
+    | Any ->
+        !^"anyone"
+    | Prefix str ->
+        !^"commence par" ^-^ bquotes (!^Config.command_prefix ^^ !^str)
+    | ExactPrefix str ->
+        !^"est " ^-^ bquotes (!^Config.command_prefix ^^ !^str)
+    | Substring str ->
+        !^"contient " ^-^ bquotes (!^Config.command_prefix ^^ !^str)
+    | Not cond ->
+        !^"ne vérifie pas la condition suivante :" ^/^ print_condition cond
+    | Or conds ->
+        !^"vérifie soit :"
+        ^/^ separate_map
+              (break 1 ^^ !^"soit :" ^^ break 1)
+              print_condition conds
+    | And conds ->
+        !^"vérifie :"
+        ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds)
+
+let v condition description command = {condition; description; command}
+
+let v_async condition description command =
+  { condition
+  ; description
+  ; command=
+      (fun message ->
+        don't_wait_for
+        @@ match%map command message with
+           | Error e ->
+               MLog.error_t "While executing command" e
+           | Ok () ->
+               () ) }
 
 type t = elt list
+
+let print_t li =
+  PPPrint.(
+    li
+    |> List.map (fun {condition; description; _} ->
+           minus ^^ space ^^ space
+           ^^ align
+                ( !^"Condition :" ^-^ print_condition condition ^^ hardline
+                ^^ !^"Description :" ^-^ !^description )
+           ^^ hardline )
+    |> concat)
+
+let to_string f arg =
+  PPPrint.(
+    let doc = f arg in
+    let buffer = Buffer.create 10 in
+    ToBuffer.pretty 0.8 80 buffer doc ;
+    Buffer.contents buffer)
+
+let to_string li = to_string print_t li

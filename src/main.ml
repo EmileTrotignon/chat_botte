@@ -8,21 +8,39 @@ open Disml_aux
 
 (* Create a function to handle message_create. *)
 
-let commands =
+let commands help =
   Message_command.
-    [ v (And [ExactPrefix "update cache"; Admin]) Commands.update_cache
-    ; v (And [ExactPrefix "crunch"; Admin]) Commands.crunch_scores
-    ; v (ExactPrefix "score") Commands.get_score_of_author
-    ; v (ExactPrefix "rank") Commands.rank_members
-    ; v (Prefix "score") (Commands.get_smart_scores "score")
-    ; v (Prefix "affuble") Commands.change_nick
-    ; v (Substring "gJirxeFwVzA") Commands.stupid_message
-    ; v (Substring "GASPAR") Commands.stupid_message
-    ; v (Substring "CANAR") Commands.stupid_message
+    [ v
+        (And [ExactPrefix "update cache"; Admin])
+        "Mets a jour le cache" Commands.update_cache
+    ; v
+        (And [ExactPrefix "crunch"; Admin])
+        "Remonte tout les messages pour calculer le score"
+        Commands.crunch_scores
+    ; v (ExactPrefix "score") "Affiche ton score" Commands.get_score_of_author
+    ; v (ExactPrefix "rank") "Mets a jour les rangs" Commands.rank_members
+    ; v (Prefix "score") "Affiche le score des sélectionnés"
+        (Commands.get_smart_scores "score")
+    ; v (Prefix "affuble") "Affuble un bouffon d'un surnom ridicule"
+        Commands.change_nick
     ; v
         (HasRole (`Role_id Config.Roles.warning))
+        "Supprime le message avec proba .33"
         (Commands.chance_of_delete 0.33)
-    ; v (And [Prefix "ping"]) Commands.send_dm ]
+    ; v (And [Prefix "ping"; Admin]) "Pingue les heureux élus" Commands.send_dm
+    ; v (ExactPrefix "help") "Affiche l'aide" help ]
+
+let rec help m = logged_reply m (Message_command.to_string (commands help))
+
+let commands = commands help
+
+let hidden_commands =
+  Message_command.
+    [ v (Substring "gJirxeFwVzA") "Serge ..." Commands.stupid_message
+    ; v (Substring "GASPAR") "Serge ..." Commands.stupid_message
+    ; v (Substring "CANAR") "Serge ..." Commands.stupid_message ]
+
+let commands = commands @ hidden_commands
 
 let execute_commands commands message =
   let Message.{content; author; guild_id; _} = message in
@@ -65,7 +83,7 @@ let execute_commands commands message =
 
 let commands_edit =
   Message_command.
-    [v (HasRole (`Role_id Config.Roles.edit_punished)) Commands.delete_message]
+    [v (HasRole (`Role_id Config.Roles.edit_punished)) "Supprime tout de suite" Commands.delete_message]
 
 let rec main () =
   (* Register the event handler *)
