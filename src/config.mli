@@ -7,7 +7,7 @@ val log_file : out_channel
 val database_location : string
 
 module Roles : sig
-  val admins : int list
+  val admins : int array
 
   val s : int
 
@@ -28,6 +28,10 @@ module Roles : sig
   val warning : int
 
   val edit_punished : int
+
+  val free_rename : int
+
+  val free_ping : int
 end
 
 val command_prefix : string

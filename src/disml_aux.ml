@@ -51,7 +51,7 @@ let user_is_admin guild_id user =
   | Error _ ->
       false
   | Ok member ->
-      List.exists Config.Roles.admins ~f:(fun admin_role ->
+      Array.exists Config.Roles.admins ~f:(fun admin_role ->
           Member.has_role member (`Role_id admin_role) )
 
 let length_limit = 2000

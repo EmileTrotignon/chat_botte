@@ -342,32 +342,39 @@ let send_dm message =
        Deferred.return
        @@ logged_reply message
             {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
-   | Ok rolelang_expr ->
+   | Ok rolelang_expr -> (
        let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
        let actor = Message.(message.author) in
-       do_with_cost ~guild_id
-         ~cost:(Config.dm_ping_cost * Member.Set.length mentions)
-         ~actor
-         ~on_failure:(fun () ->
-           logged_reply message
-             "Commence par regarder ton score dans les yeux avant de chercher \
-              a pinguer les autres." )
-         ~action:(fun () ->
-           Member.Set.iter mentions ~f:(fun member ->
-               member |> Member.user |> User.Map.find dms
-               |> (function
-                    | None ->
-                        let block_bot_cost = -10 in
-                        logged_reply message
-                          {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
-                        Data.add_to_score guild_id member.user.id block_bot_cost
-                    | Some channel -> (
-                        match%map Channel.say answer_content channel with
-                        | Error e ->
-                            MLog.error_t "While sending dm" e
-                        | Ok _ ->
-                            () ) )
-               |> don't_wait_for ) ) )
+       match%bind member_of_user guild_id actor with
+       | Error e ->
+           Deferred.return @@ MLog.error_t "while converting user to member" e
+       | Ok member ->
+           let cost =
+             if Member.has_role member (`Role_id Config.Roles.free_ping) then 0
+             else Config.dm_ping_cost * Member.Set.length mentions
+           in
+           do_with_cost ~guild_id ~cost ~actor
+             ~on_failure:(fun () ->
+               logged_reply message
+                 "Commence par regarder ton score dans les yeux avant de \
+                  chercher a pinguer les autres." )
+             ~action:(fun () ->
+               Member.Set.iter mentions ~f:(fun member ->
+                   member |> Member.user |> User.Map.find dms
+                   |> (function
+                        | None ->
+                            let block_bot_cost = -10 in
+                            logged_reply message
+                              {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
+                            Data.add_to_score guild_id member.user.id
+                              block_bot_cost
+                        | Some channel -> (
+                            match%map Channel.say answer_content channel with
+                            | Error e ->
+                                MLog.error_t "While sending dm" e
+                            | Ok _ ->
+                                () ) )
+                   |> don't_wait_for ) ) ) )
   |> don't_wait_for
 
 let change_nick message =
@@ -408,9 +415,15 @@ let change_nick message =
                      Deferred.return
                      @@ MLog.error_t "while converting user to member" e
                  | Ok member ->
+                     let cost =
+                       if
+                         Member.has_role member
+                           (`Role_id Config.Roles.free_rename)
+                       then 0
+                       else Config.change_nick_cost
+                     in
                      Deferred.join
-                     @@ do_with_cost ~guild_id ~cost:Config.change_nick_cost
-                          ~actor:author
+                     @@ do_with_cost ~guild_id ~cost ~actor:author
                           ~on_failure:(fun () ->
                             Deferred.return
                             @@ logged_reply message

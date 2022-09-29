@@ -61,11 +61,11 @@ open Lwt.Infix
 let info message = Irmin_unix.info ~author:"Chat-botté" "%s" message
 
 let score_of_key key =
-  repo >>= Store.master
+  repo >>= Store.main
   >>= fun t -> Store.find t key >|= Option.value ~default:0
 
 let add_to_score_of_key key points =
-  repo >>= Store.master
+  repo >>= Store.main
   >>= fun t ->
   score_of_key key
   >>= fun score ->
@@ -80,7 +80,7 @@ let add_to_score_of_key key points =
   | Ok () -> () | Error _e -> MLog.error "Could not write to database"
 
 let set_score_of_key key score =
-  repo >>= Store.master
+  repo >>= Store.main
   >>= fun t ->
   let message =
     {%eml|Setting the score of <%-(Key.to_string key)%> to <%i-score%>|}
