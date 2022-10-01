@@ -1,3 +1,3 @@
 open Disml
 
-val guild_of_id : Models.Guild_id.t -> Models.Guild.t
+val guild_of_id : Models.Guild_id.t -> Models.Guild.t Lwt.t

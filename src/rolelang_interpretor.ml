@@ -1,5 +1,5 @@
 open Core
-open Async
+open Common
 open Rolelang
 open Disml_aux
 open Disml
@@ -14,16 +14,16 @@ let eval_id guild_id id =
   | Ast.User id -> (
       let user_id = `User_id id in
       let member = member_of_id guild_id user_id in
-      match%map member with
+      let+ match_variable = member in match match_variable with
       | Ok member ->
           Member.Set.singleton member
       | Error _e ->
           Member.Set.empty )
   | Ast.Role id -> (
-      let%bind role = role_of_id guild_id (`Role_id id) in
+      let* role = role_of_id guild_id (`Role_id id) in
       match role with
       | None ->
-          Deferred.return Member.Set.empty
+          Lwt.return Member.Set.empty
       | Some role ->
           members_of_role_id guild_id @@ Role.id role )
 
@@ -32,16 +32,16 @@ let rec eval guild_id id =
   Ast.(
     match id with
     | Not e ->
-        let%bind s1 = eval_id Everyone in
-        let%map s2 = eval e in
+        let* s1 = eval_id Everyone in
+        let+ s2 = eval e in
         Member.Set.diff s1 s2
     | Id id ->
         eval_id id
     | Or (e1, e2) ->
-        let%bind s1 = eval e1 in
-        let%map s2 = eval e2 in
+        let* s1 = eval e1 in
+        let+ s2 = eval e2 in
         Member.Set.union s1 s2
     | And (e1, e2) ->
-        let%bind s1 = eval e1 in
-        let%map s2 = eval e2 in
+        let* s1 = eval e1 in
+        let+ s2 = eval e2 in
         Member.Set.inter s1 s2)

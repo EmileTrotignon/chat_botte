@@ -4,6 +4,7 @@ module TmpMember = Member
 open Models
 module Member = TmpMember
 
+
 let config = Irmin_git.config ~bare:true Config.database_location
 
 module Key = struct
@@ -27,10 +28,10 @@ module Key = struct
            try
              let guild_id = `Guild_id (int_of_string guild_id)
              and id = `User_id (int_of_string id) in
-             Deferred.map ~f:Option.return (member_of_id id guild_id)
-           with Failure _ -> Deferred.return None )
+             Lwt.map ~f:Option.return (member_of_id id guild_id)
+           with Failure _ -> Lwt.return None )
          | _ ->
-             Deferred.return None) *)
+             Lwt.return None) *)
   end
 
   module Map = Map.Make (Self)
@@ -61,8 +62,7 @@ open Lwt.Infix
 let info message = Irmin_unix.info ~author:"Chat-botté" "%s" message
 
 let score_of_key key =
-  repo >>= Store.main
-  >>= fun t -> Store.find t key >|= Option.value ~default:0
+  repo >>= Store.main >>= fun t -> Store.find t key >|= Option.value ~default:0
 
 let add_to_score_of_key key points =
   repo >>= Store.main
@@ -96,41 +96,37 @@ let set_score_of_id guild_id id = set_score_of_key (Key.of_ids guild_id id)
 let add_to_score_of_id guild_id id =
   add_to_score_of_key (Key.of_ids guild_id id)
 
-open Async
-
+(*
 let score_of_key key = In_thread.run (fun () -> Lwt_main.run (score_of_key key))
-
+*)
 let score_of_id guild_id id = score_of_key (Key.of_ids guild_id id)
 
 let score_of_user guild_id user = score_of_id guild_id User.(user.id)
 
-let add_to_score guild_id id points =
-  In_thread.run (fun () ->
-      Lwt_main.run (add_to_score_of_id guild_id id points) )
+let add_to_score guild_id id points = add_to_score_of_id guild_id id points
 
-let set_score guild_id id score =
-  In_thread.run (fun () -> Lwt_main.run (set_score_of_id guild_id id score))
+let set_score guild_id id score = set_score_of_id guild_id id score
 
 (*let scores () = In_thread.run (fun () -> Lwt_main.run (scores ()))
 
   let scores () =
-    let%map scores = scores () in
+    let+ scores = scores () in
     Key.Map.to_alist scores
 
   let scores () =
-    Deferred.join
-    @@ let%map scores = scores () in
-       Deferred.List.filter_map
+    Lwt.join
+    @@ let+ scores = scores () in
+       Lwt.List.filter_map
          ~f:(fun (key, data) ->
-           let%map key, data =
-             Deferred.both (Key.to_member key)
-               (Deferred.return @@ Option.return data)
+           let+ key, data =
+             Lwt.both (Key.to_member key)
+               (Lwt.return @@ Option.return data)
            in
            Option.both key data )
          scores
 
   let _scores () =
-    let%map scores = scores () in
+    let+ scores = scores () in
     List.fold scores ~init:Member.Map.empty ~f:(fun map (key, data) ->
         Member.Map.add_exn ~key ~data map )
 *)

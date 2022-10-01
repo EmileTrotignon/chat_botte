@@ -2,7 +2,7 @@
  (name main)
  (public_name chat-botte)
  (libraries
- pprint
+  pprint
   rolelang
   disml
   sexplib
@@ -15,6 +15,9 @@
   irmin-unix
   ppx_irmin
   lwt
-  lwt.unix)
+  lwt.unix
+  caqti
+  caqti-async
+  caqti-driver-postgresql)
  (preprocess
   (pps ppx_sexp_conv embedded_ocaml_templates.ppx_eml ppx_let)))

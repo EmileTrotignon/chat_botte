@@ -1,4 +1,3 @@
-open Core
 (* open Disml_aux *)
 (* open Disml.Models *)
 
@@ -12,15 +11,13 @@ let log content =
   log Config.log_file content
 
 let time () =
-  Time.pp Format.str_formatter @@ Time.now () ;
+  Core.Time.pp Format.str_formatter @@ Core.Time.now () ;
   Format.flush_str_formatter ()
 
 let info content = log ("[Info][" ^ time () ^ "] " ^ content ^ "\n")
 
 let error content = log ("[Error][" ^ time () ^ "] " ^ content ^ "\n")
 
-let string_of_error e =
-  Error.pp Format.str_formatter e ;
-  Format.flush_str_formatter ()
+let string_of_error = Fun.id
 
 let error_t reason e = error {%eml|<%- reason %> : <%- string_of_error e %>.|}

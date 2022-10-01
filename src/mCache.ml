@@ -1,5 +1,5 @@
 open Core
-open Async
+open Common
 open Disml
 module TmpMember = Member
 open Models
@@ -7,46 +7,48 @@ module Member = TmpMember
 
 let guild_of_id (guild_id : Guild_id.t) =
   Cache.(
-    let cache = Mvar.peek_exn cache in
-    GuildMap.find_exn cache.guilds guild_id)
+    let+ cache = read_copy cache in
+    Guild_id.Map.find guild_id cache.guilds )
 
 module type I = sig
   type t
 
   type arg
 
-  val get_new : arg -> t Deferred.Or_error.t
+  val get_new : arg -> (t, string) Lwt_result.t
 
   val log_success : t -> unit
 
-  val log_failure : Error.t -> unit
+  val log_failure : string -> unit
 end
 
 module Cached (A : I) = struct
-  let value : (A.t, read_write) Mvar.t = Mvar.create ()
+  let value : A.t Option.t ref = ref None
 
-  let udpating : (bool, read_write) Mvar.t = Mvar.create ()
+  let udpating : Lwt_mutex.t = Lwt_mutex.create ()
 
   let update arg =
-    let already_updating = Option.value ~default:false (Mvar.peek udpating) in
-    if already_updating then return ()
+    if Lwt_mutex.is_locked udpating then Lwt.return ()
     else
-      let%bind new_value = A.get_new arg in
-      match new_value with
-      | Ok new_value ->
-          A.log_success new_value ;
-          Deferred.return @@ Mvar.set value new_value
-      | Error e ->
-          A.log_failure e ; Mvar.set udpating false ; Deferred.never ()
+      Lwt_mutex.with_lock udpating (fun () ->
+          let* new_value = A.get_new arg in
+          match new_value with
+          | Ok new_value ->
+              A.log_success new_value ;
+              value := Some new_value ;
+              Lwt.return ()
+          | Error e ->
+              A.log_failure e ; Lwt.return () )
 
   let get arg =
-    match Mvar.peek value with
+    let* () = Lwt_mutex.lock udpating in
+    match !value with
     | Some value ->
-        Deferred.return value
+        Lwt_mutex.unlock udpating ; Lwt.return value
     | None ->
-        don't_wait_for (update arg) ;
-        let%map () = Mvar.value_available value in
-        Mvar.peek_exn value
+        Lwt_mutex.unlock udpating ;
+        let+ () = update arg in
+        Option.value_exn !value
 end
 
 module CachedMembers = Cached (struct
@@ -55,19 +57,15 @@ module CachedMembers = Cached (struct
   type arg = Guild_id.t
 
   let get_new guild_id =
-    let guild = guild_of_id guild_id in
-    let%map new_members = Guild.request_members guild in
-    Or_error.map ~f:Member.Set.of_list new_members
+    let* guild = guild_of_id guild_id in
+    let+ new_members = Guild.request_members guild in
+    Result.map ~f:Member.Set.of_list new_members
 
   let log_success new_members =
     MLog.info
-      {%eml|Successfully queryed <%i- Member.Set.length new_members %> members.|}
+      {%eml|Successfully queryed <%i- Member.Set.cardinal new_members %> members.|}
 
-  let log_failure e =
-    Error.pp Format.str_formatter e ;
-    let str = Buffer.contents Format.stdbuf in
-    Buffer.reset Format.stdbuf ;
-    MLog.error {%eml|Request members failed : <%-str%>|}
+  let log_failure e = MLog.error {%eml|Request members failed : <%-e%>|}
 end)
 
 module CachedRoles = Cached (struct
@@ -76,7 +74,7 @@ module CachedRoles = Cached (struct
   type arg = Guild_id.t
 
   let get_new guild_id =
-    let guild = guild_of_id guild_id in
+    let* guild = guild_of_id guild_id in
     Guild.request_roles guild
 
   let log_success new_roles =
@@ -90,20 +88,21 @@ module CachedDM = Cached (struct
 
   type arg = Guild_id.t
 
-  let get_new guild_id : t Deferred.Or_error.t =
-    let%bind members = CachedMembers.get guild_id in
-    members |> Member.Set.to_list
-    |> Deferred.List.filter_map ~f:(fun member ->
+  let get_new guild_id =
+    let* members = CachedMembers.get guild_id in
+    members |> Member.Set.to_seq |> Lwt_seq.of_seq
+    |> Lwt_seq.filter_map_s (fun member ->
            let user = Member.user member in
-           let%map channel = User_id.create_dm user.id in
+           let+ channel = User_id.create_dm user.id in
            match channel with
            | Error e ->
                MLog.error_t "While opening a DM channel" e ;
                None
            | Ok channel ->
                Some (user, channel) )
-    |> Deferred.map ~f:User.Map.of_alist_exn
-    |> Deferred.map ~f:Or_error.return
+    |> Lwt_seq.to_list
+    |> Lwt.map (fun d ->
+           d |> Stdlib.List.to_seq |> User.Map.of_seq |> Result.return )
 
   let log_success _new_channels = MLog.info {|Successfully opened DM channels|}
 
@@ -128,6 +127,6 @@ let get_dms = CachedDM.get
 let update_dms = CachedDM.update
 
 let update_all guild_id =
-  let%bind () = update_members guild_id in
-  let%bind () = update_dms guild_id in
+  let* () = update_members guild_id in
+  let* () = update_dms guild_id in
   update_roles guild_id

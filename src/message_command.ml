@@ -1,6 +1,6 @@
+open Common
 open Disml
 open Models
-open Async
 
 type condition =
   | Admin
@@ -14,7 +14,7 @@ type condition =
   | Not of condition
 
 type elt =
-  {condition: condition; command: Message.t -> unit; description: string}
+  {condition: condition; command: Message.t -> unit Lwt.t; description: string}
 
 let role_id (`Role_id id) = PPPrint.(!^(Printf.sprintf "%s%i%s" "<@" id "%s"))
 
@@ -44,7 +44,7 @@ let rec print_condition cond =
               print_condition conds
     | And conds ->
         !^"vérifie :"
-        ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds)
+        ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds )
 
 let v condition description command = {condition; description; command}
 
@@ -53,12 +53,12 @@ let v_async condition description command =
   ; description
   ; command=
       (fun message ->
-        don't_wait_for
-        @@ match%map command message with
-           | Error e ->
-               MLog.error_t "While executing command" e
-           | Ok () ->
-               () ) }
+        let+ match_variable = command message in
+        match match_variable with
+        | Error e ->
+            MLog.error_t "While executing command" e
+        | Ok () ->
+            () ) }
 
 type t = elt list
 
@@ -71,13 +71,13 @@ let print_t li =
                 ( !^"Condition :" ^-^ print_condition condition ^^ hardline
                 ^^ !^"Description :" ^-^ !^description )
            ^^ hardline )
-    |> concat)
+    |> concat )
 
 let to_string f arg =
   PPPrint.(
     let doc = f arg in
     let buffer = Buffer.create 10 in
     ToBuffer.pretty 0.8 80 buffer doc ;
-    Buffer.contents buffer)
+    Buffer.contents buffer )
 
 let to_string li = to_string print_t li

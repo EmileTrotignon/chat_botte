@@ -1,7 +1,8 @@
-open Async
+
+open Common
 open Disml
 open Models
 let guild_of_id (guild_id : Guild_id.t) =
   Cache.(
-    let cache = Mvar.peek_exn cache in
-    GuildMap.find_exn cache.guilds guild_id)
+    let+ cache = read_copy cache in
+    Guild_id.Map.find guild_id cache.guilds )
