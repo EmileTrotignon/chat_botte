@@ -26,13 +26,12 @@ let rec iter_and_last_deferred ~f messages =
       iter_and_last_deferred ~f messages
 
 let delete_tmp_message message =
-  dont_wait_exn (fun () ->
-      let+ delete = Message.delete message in
-      match delete with
-      | Error e ->
-          MLog.error_t "While deleting tmp message" e
-      | Ok () ->
-          () )
+  let+ delete = Message.delete message in
+  match delete with
+  | Error e ->
+      MLog.error_t "While deleting tmp message" e
+  | Ok () ->
+      ()
 
 let rec iter_loop ~f channel message =
   let message_id = Message.(message.id) in
@@ -62,17 +61,16 @@ let iter ~f channel =
       let* messages =
         Channel.get_messages ~limit:100 ~mode:`Before channel tmp_message_id
       in
+      let* () = delete_tmp_message tmp_message in
       match messages with
       | Error e ->
-          delete_tmp_message tmp_message ;
           Lwt.return @@ MLog.error_t "While requesting messages" e
       | Ok messages -> (
-          delete_tmp_message tmp_message ;
-          match iter_and_last ~f messages with
-          | None ->
-              Lwt.return ()
-          | Some message ->
-              iter_loop ~f channel message ) )
+        match iter_and_last ~f messages with
+        | None ->
+            Lwt.return_unit
+        | Some message ->
+            iter_loop ~f channel message ) )
 
 let rec iter_loop_deferred ~f channel message =
   let message_id = Message.(message.id) in
@@ -91,22 +89,22 @@ let rec iter_loop_deferred ~f channel message =
           iter_loop_deferred ~f channel message )
 
 let iter_deferred ~f channel =
-    let* tmp_message = Channel.send_message ~content:"Scanning this channel @everyone" channel in
-  match
-tmp_message
-  with
+  let* tmp_message =
+    Channel.send_message ~content:"Scanning this channel @everyone" channel
+  in
+  match tmp_message with
   | Error e ->
       Lwt.return @@ MLog.error_t "While sending scanning message" e
   | Ok tmp_message -> (
       let tmp_message_id = Message.(tmp_message.id) in
-      let* messages = Channel.get_messages ~limit:100 ~mode:`Before channel tmp_message_id in
-      match messages
-      with
+      let* messages =
+        Channel.get_messages ~limit:100 ~mode:`Before channel tmp_message_id
+      in
+      let* () = delete_tmp_message tmp_message in
+      match messages with
       | Error e ->
-          delete_tmp_message tmp_message ;
           Lwt.return @@ MLog.error_t "While requesting messages" e
       | Ok messages -> (
-          delete_tmp_message tmp_message ;
           let* message = iter_and_last_deferred ~f messages in
           match message with
           | None ->

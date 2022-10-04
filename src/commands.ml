@@ -10,7 +10,7 @@ let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
   let* score = Data.score_of_user guild_id actor in
   if score < cost then Lwt.return @@ on_failure ()
   else
-    let+ () = Data.add_to_score guild_id actor.id (-cost) in
+    let* () = Data.add_to_score guild_id actor.id (-cost) in
     action ()
 (*
 let or_log ~f ~message_error =
@@ -261,7 +261,7 @@ let remove_roles roles member =
 let rank_members message =
   let guild_id = Option.value_exn Message.(message.guild_id) in
   let* members = MCache.get_members guild_id in
-  let+ members =
+  let* members =
     members |> Member.Set.elements
     |> Lwt_list.map_s (fun member ->
            Lwt.both (Lwt.return member)
@@ -270,31 +270,28 @@ let rank_members message =
   in
   let n = List.length members in
   let n_ranks = Array.length Config.Roles.ranks in
-  List.iteri
-    ~f:(fun i (member, _score) ->
-      (fun () ->
-        let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
-        let* role = role_of_id guild_id role_id in
-        match role with
-        | None ->
-            Lwt.return
-            @@ MLog.error "While trying to retrieve a role from its id"
-        | Some role -> (
-            let role_repr = Role.name role in
-            if Member.has_role member role_id then Lwt.return ()
-              (* @@ logged_reply message
-                   {|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|} *)
-            else
-              let* () = remove_roles Config.Roles.ranks member in
-              let+ match_variable = Member.add_role ~role member in
-              match match_variable with
-              | Error e ->
-                  MLog.error_t "While adding role" e
-              | Ok () ->
-                  logged_reply message
-                    {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> now has rank <%- role_repr %>.|}
-            ) )
-      |> dont_wait_exn )
+  Lwt_list.iteri_s
+    (fun i (member, _score) ->
+      let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
+      let* role = role_of_id guild_id role_id in
+      match role with
+      | None ->
+          Lwt.return @@ MLog.error "While trying to retrieve a role from its id"
+      | Some role -> (
+          let role_repr = Role.name role in
+          if Member.has_role member role_id then Lwt.return ()
+            (* @@ logged_reply message
+                 {|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|} *)
+          else
+            let* () = remove_roles Config.Roles.ranks member in
+            let+ match_variable = Member.add_role ~role member in
+            match match_variable with
+            | Error e ->
+                MLog.error_t "While adding role" e
+            | Ok () ->
+                logged_reply message
+                  {%eml|/!\ @everyone /!\ <%- Member.ping_text member %> now has rank <%- role_repr %>.|}
+          ) )
     members
 
 let chance_of_delete chance message =
@@ -354,28 +351,26 @@ let send_dm message =
                 "Commence par regarder ton score dans les yeux avant de \
                  chercher a pinguer les autres." )
             ~action:(fun () ->
-              mentions
-              |> Member.Set.iter (fun member ->
-                     (fun () ->
-                       member |> Member.user
-                       |> Fun.flip User.Map.find_opt dms
-                       |> function
-                       | None ->
-                           let block_bot_cost = -10 in
-                           logged_reply message
-                             {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
-                           Data.add_to_score guild_id member.user.id
-                             block_bot_cost
-                       | Some channel -> (
-                           let+ match_variable =
-                             Channel.say answer_content channel
-                           in
-                           match match_variable with
-                           | Error e ->
-                               MLog.error_t "While sending dm" e
-                           | Ok _ ->
-                               () ) )
-                     |> dont_wait_exn ) ) )
+              mentions |> Member.Set.elements
+              |> Lwt_list.iter_s (fun member ->
+                     member |> Member.user
+                     |> Fun.flip User.Map.find_opt dms
+                     |> function
+                     | None ->
+                         let block_bot_cost = -10 in
+                         logged_reply message
+                           {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
+                         Data.add_to_score guild_id member.user.id
+                           block_bot_cost
+                     | Some channel -> (
+                         let+ match_variable =
+                           Channel.say answer_content channel
+                         in
+                         match match_variable with
+                         | Error e ->
+                             MLog.error_t "While sending dm" e
+                         | Ok _ ->
+                             () ) ) ) )
 
 let change_nick message =
   let Message.{guild_id; content; _} = message in
@@ -421,27 +416,25 @@ let change_nick message =
                       then 0
                       else Config.change_nick_cost
                     in
-                    Fun.flip Lwt.bind Fun.id
-                    @@ do_with_cost ~guild_id ~cost ~actor:author
-                         ~on_failure:(fun () ->
-                           Lwt.return
-                           @@ logged_reply message
-                                "Commence par regarder ton score dans les yeux \
-                                 avant de chercher a affubler les autres." )
-                         ~action:(fun () ->
-                           let* () =
-                             Data.add_to_score guild_id author.id
-                               (-Config.change_nick_cost)
-                           in
-                           let+ match_variable =
-                             Member.change_nick member new_nick
-                           in
-                           match match_variable with
-                           | Ok () ->
-                               logged_reply message
-                                 "Tu as bien affublé ce gros bouffon."
-                           | Error e ->
-                               MLog.error_t "while affubling" e ) )
+                    do_with_cost ~guild_id ~cost ~actor:author
+                      ~on_failure:(fun () ->
+                        logged_reply message
+                          "Commence par regarder ton score dans les yeux avant \
+                           de chercher a affubler les autres." )
+                      ~action:(fun () ->
+                        let* () =
+                          Data.add_to_score guild_id author.id
+                            (-Config.change_nick_cost)
+                        in
+                        let+ match_variable =
+                          Member.change_nick member new_nick
+                        in
+                        match match_variable with
+                        | Ok () ->
+                            logged_reply message
+                              "Tu as bien affublé ce gros bouffon."
+                        | Error e ->
+                            MLog.error_t "while affubling" e ) )
           | _ :: _ ->
               Lwt.return
               @@ logged_reply message

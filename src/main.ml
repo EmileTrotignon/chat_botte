@@ -48,12 +48,15 @@ let execute_commands commands message =
   guild_id
   |> option_lwt_iter ~f:(fun guild_id ->
          let* is_admin = user_is_admin guild_id author in
-         let* match_variable = member_of_user guild_id author in
-         match match_variable with
+         print_endline "coucou 1" ;
+         let* member = member_of_user guild_id author in
+         print_endline "coucou 2" ;
+         match member with
          | Error e ->
              MLog.error_t "While converting author to member " e ;
              Lwt.return_unit
          | Ok member -> (
+             print_endline "ok member :)" ;
              let rec validates condition =
                match condition with
                | Message_command.Admin ->
@@ -133,7 +136,9 @@ let main () =
   Client.reaction_add := Commands.update_score_add ;
   Client.reaction_remove := Commands.update_score_remove ;
   (* Start the client. It's recommended to load the token from an env var or other config file. *)
-  let+ _client = Client.start Config.token in
-  MLog.info "Connected successfully"
+  MLog.info "trying to connect" ;
+  let* _client = Client.start Config.token in
+  MLog.info "Connected successfully" ;
+  fst (Lwt.wait ())
 
 let _ = Lwt_main.run (main ())
