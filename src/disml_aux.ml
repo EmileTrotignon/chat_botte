@@ -24,7 +24,7 @@ let member_of_id guild_id user_id =
   match
     Member.Set.find
       ~f:(fun member ->
-        User_id.(get_id Member.(member.user).id = get_id user_id) )
+        User_id.get_id Member.(member.user).id = User_id.get_id user_id )
       members
   with
   | Some m ->
@@ -42,9 +42,7 @@ let members_of_role_id guild_id role_id =
 
 let role_of_id guild_id role_id =
   let%map roles = MCache.get_roles guild_id in
-  List.find
-    ~f:(fun role -> Int.(Role.(Role_id.(get_id role.id = get_id role_id))))
-    roles
+  List.find ~f:(fun role -> Role_id.(Role.id role = role_id)) roles
 
 let user_is_admin guild_id user =
   match%map member_of_user guild_id user with
