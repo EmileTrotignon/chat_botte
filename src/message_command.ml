@@ -16,7 +16,7 @@ type condition =
 type elt =
   {condition: condition; command: Message.t -> unit; description: string}
 
-let role_id (`Role_id id) = PPPrint.(!^(Printf.sprintf "%s%i%s" "<@" id "%s"))
+let role_id (`Role_id id) = PPPrint.(!^(Printf.sprintf "%s%i%s" "<@&" id ">"))
 
 let rec print_condition cond =
   PPPrint.(
