@@ -2,15 +2,13 @@ open Core
 
 module Result = struct
   module M = Result
+
   let ( let* ) v f = M.map ~f v
 
   let ( let+ ) v f = M.bind v ~f
 
   let ( let- ) v f = M.iter v ~f
-
- 
 end
-
 
 module Option = struct
   let ( let* ) v f = Option.map ~f v

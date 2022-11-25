@@ -45,4 +45,4 @@ let rec eval guild_id id =
     | And (e1, e2) ->
         let+ s1 = eval e1 in
         let* s2 = eval e2 in
-        Member.Set.inter s1 s2)
+        Member.Set.inter s1 s2 )

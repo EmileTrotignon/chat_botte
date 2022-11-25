@@ -44,7 +44,7 @@ let rec print_condition cond =
               print_condition conds
     | And conds ->
         !^"vérifie :"
-        ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds)
+        ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds )
 
 let v condition description command = {condition; description; command}
 
@@ -71,13 +71,13 @@ let print_t li =
                 ( !^"Condition :" ^-^ print_condition condition ^^ hardline
                 ^^ !^"Description :" ^-^ !^description )
            ^^ hardline )
-    |> concat)
+    |> concat )
 
 let to_string f arg =
   PPPrint.(
     let doc = f arg in
     let buffer = Buffer.create 10 in
     ToBuffer.pretty 0.8 80 buffer doc ;
-    Buffer.contents buffer)
+    Buffer.contents buffer )
 
 let to_string li = to_string print_t li

@@ -8,7 +8,7 @@ module Self = struct
   let ( = ) (m1 : t) (m2 : t) =
     Int.(
       Guild_id.get_id m1.guild_id = Guild_id.get_id m2.guild_id
-      && User_id.get_id m1.user.id = User_id.get_id m2.user.id)
+      && User_id.get_id m1.user.id = User_id.get_id m2.user.id )
 end
 
 module Hashtbl = Hashtbl.Make (Self)
