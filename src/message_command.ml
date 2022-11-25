@@ -46,9 +46,9 @@ let rec print_condition cond =
         !^"vérifie :"
         ^/^ separate_map (break 1 ^^ !^"et :" ^^ break 1) print_condition conds )
 
-let v condition description command = {condition; description; command}
+let v_sync condition description command = {condition; description; command}
 
-let v_async condition description command =
+let v condition description command =
   { condition
   ; description
   ; command=

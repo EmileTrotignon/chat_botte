@@ -55,36 +55,34 @@ let user_is_admin guild_id user =
 
 let length_limit = 2000
 
-let logged_reply message reply =
-  let Message.{content; _} = message in
-  MLog.info {%eml|Replying to message <%S-content%> with <%S-reply%>.|} ;
-  match%map Message.reply message reply with
-  | Ok _ ->
-      MLog.info "Reply succesful."
-  | Error e ->
-      MLog.error_t "during reply" e
+let long_reply message reply =
+  let open Letop.Deferred_or_error in
+  let* _ = Message.reply message reply in
+  ()
+
 
 let long_reply message (content : string) =
-  don't_wait_for
-  @@
+  let open Letop.Deferred_or_error in
   let content = String.split ~on:'\n' content in
   let buffer = Buffer.create length_limit in
   let empty_buffer () =
     let content = Buffer.contents buffer in
     Buffer.reset buffer ;
     let n_replies = (String.length content / length_limit) + 1 in
-    Deferred.for_ 1 ~to_:n_replies ~do_:(fun i ->
+    Deferred.Or_error.List.iter ~how:`Sequential (List.init n_replies ~f:Fun.id)
+      ~f:(fun i ->
+        let i = i + 1 in
         let lo = (i - 1) * length_limit in
         let hi = i * length_limit in
         let hi = min (String.length content) hi in
-        logged_reply message (String.sub ~pos:lo ~len:(hi - lo) content) )
+        long_reply message (String.sub ~pos:lo ~len:(hi - lo) content) )
   in
   let+ () =
-    Deferred.List.iter
+    Deferred.Or_error.List.iter ~how:`Sequential
       ~f:(fun line ->
         let line = line ^ "\n" in
         if Buffer.length buffer + String.length line <= length_limit then
-          Deferred.return @@ Buffer.add_string buffer line
+          Deferred.Or_error.return @@ Buffer.add_string buffer line
         else
           let* () = empty_buffer () in
           Buffer.add_string buffer line )
@@ -92,4 +90,4 @@ let long_reply message (content : string) =
   in
   empty_buffer ()
 
-let logged_reply message reply = long_reply message reply
+let long_reply message reply = long_reply message reply

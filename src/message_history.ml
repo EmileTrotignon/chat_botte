@@ -4,7 +4,6 @@ open Disml
 module TmpMember = Member
 open Models
 module Member = TmpMember
-open Letop.Deferred
 
 let rec iter_and_last ~f messages =
   match messages with
@@ -15,10 +14,11 @@ let rec iter_and_last ~f messages =
   | message :: messages ->
       f message ; iter_and_last ~f messages
 
-let rec iter_and_last_deferred ~f messages =
+let rec iter_and_last_deferred ~f messages : 'a option Deferred.Or_error.t =
+  let open Letop.Deferred_or_error in
   match messages with
   | [] ->
-      Deferred.return None
+      Deferred.Or_error.return None
   | [message] ->
       let* () = f message in
       Some message
@@ -73,36 +73,30 @@ let iter ~f channel =
 
 let rec iter_loop_deferred ~f channel message =
   let message_id = Message.(message.id) in
-  match%bind
+  let open Letop.Deferred_or_error in
+  let+ messages =
     Channel.get_messages ~limit:100 ~mode:`Before channel message_id
-  with
-  | Error e ->
-      Deferred.return @@ MLog.error_t "While requesting messages" e
-  | Ok messages -> (
-      match%bind iter_and_last_deferred ~f messages with
-      | None ->
-          Deferred.return ()
-      | Some message ->
-          iter_loop_deferred ~f channel message )
+  in
+  let+ r = iter_and_last_deferred ~f messages in
+  match r with
+  | None ->
+      Deferred.return (Ok ())
+  | Some message ->
+      iter_loop_deferred ~f channel message
 
 let iter_deferred ~f channel =
-  match%bind
+  let open Letop.Deferred_or_error in
+  let+ tmp_message =
     Channel.send_message ~content:"Scanning this channel @everyone" channel
-  with
-  | Error e ->
-      Deferred.return @@ MLog.error_t "While sending scanning message" e
-  | Ok tmp_message -> (
-      let tmp_message_id = Message.(tmp_message.id) in
-      match%bind
-        Channel.get_messages ~limit:100 ~mode:`Before channel tmp_message_id
-      with
-      | Error e ->
-          delete_tmp_message tmp_message ;
-          Deferred.return @@ MLog.error_t "While requesting messages" e
-      | Ok messages -> (
-          delete_tmp_message tmp_message ;
-          match%bind iter_and_last_deferred ~f messages with
-          | None ->
-              Deferred.return ()
-          | Some message ->
-              iter_loop_deferred ~f channel message ) )
+  in
+  let tmp_message_id = Message.(tmp_message.id) in
+  let+ messages =
+    Channel.get_messages ~limit:100 ~mode:`Before channel tmp_message_id
+  in
+  delete_tmp_message tmp_message ;
+  let+ r = iter_and_last_deferred ~f messages in
+  match r with
+  | None ->
+      Deferred.return @@ Ok ()
+  | Some message ->
+      iter_loop_deferred ~f channel message

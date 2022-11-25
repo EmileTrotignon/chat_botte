@@ -9,6 +9,13 @@ open Letop.Deferred
 
 (* Create a function to handle message_create. *)
 
+let log_error x =
+  match%map x with
+  | Ok () ->
+      ()
+  | Error e ->
+      MLog.error_t "While runnig command" e
+
 let commands help =
   Message_command.
     [ v
@@ -31,7 +38,7 @@ let commands help =
     ; v (Prefix "ping") "Pingue les heureux élus" Commands.send_dm
     ; v (ExactPrefix "help") "Affiche l'aide" help ]
 
-let rec help m = logged_reply m (Message_command.to_string (commands help))
+let rec help m = long_reply m (Message_command.to_string (commands help))
 
 let commands = commands help
 
@@ -109,25 +116,30 @@ let main () =
   (Client.member_update :=
      fun event ->
        Commands.update_cached_members Event.GuildMemberUpdate.(event.guild_id)
-  ) ;
+       |> don't_wait_for ) ;
   (Client.member_leave :=
      fun event ->
        Commands.update_cached_members Event.GuildMemberRemove.(event.guild_id)
-  ) ;
+       |> don't_wait_for ) ;
   (Client.member_join :=
-     fun event -> Commands.update_cached_members Member.(event.guild_id) ) ;
+     fun event ->
+       Commands.update_cached_members Member.(event.guild_id) |> don't_wait_for
+  ) ;
   (Client.role_create :=
      fun event ->
-       Commands.update_cached_roles Event.GuildRoleCreate.(event.guild_id) ) ;
+       Commands.update_cached_roles Event.GuildRoleCreate.(event.guild_id)
+       |> don't_wait_for ) ;
   (Client.role_update :=
      fun event ->
-       Commands.update_cached_roles Event.GuildRoleUpdate.(event.guild_id) ) ;
+       Commands.update_cached_roles Event.GuildRoleUpdate.(event.guild_id)
+       |> don't_wait_for ) ;
   (Client.role_delete :=
      fun event ->
-       Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id) ) ;
+       Commands.update_cached_roles Event.GuildRoleDelete.(event.guild_id)
+       |> don't_wait_for ) ;
   Client.message_create := execute_commands commands ;
-  Client.reaction_add := Commands.update_score_add ;
-  Client.reaction_remove := Commands.update_score_remove ;
+  (Client.reaction_add := Commands.(log_don't_wait update_score_add)) ;
+  (Client.reaction_remove := Commands.(log_don't_wait update_score_remove)) ;
   (* Start the client. It's recommended to load the token from an env var or other config file. *)
   let* _client = Client.start Config.token in
   MLog.info "Connected successfully"

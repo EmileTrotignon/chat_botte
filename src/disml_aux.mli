@@ -22,4 +22,4 @@ val role_of_id :
 
 val user_is_admin : Models.Guild_id.t -> Models.User.t -> bool Deferred.t
 
-val logged_reply : Models.Message.t -> string -> unit
+val long_reply : Models.Message.t -> string -> unit Deferred.Or_error.t

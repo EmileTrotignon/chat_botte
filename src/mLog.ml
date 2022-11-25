@@ -4,6 +4,7 @@ open Core
 
 let log channel content =
   Out_channel.output_string channel content ;
+  Out_channel.newline channel ;
   Out_channel.flush channel
 
 let log content =
@@ -11,16 +12,12 @@ let log content =
   log stdout content ;
   log Config.log_file content
 
-let time () =
-  Time.pp Format.str_formatter @@ Time.now () ;
-  Format.flush_str_formatter ()
+let time () = Format.asprintf "%a" Time.pp (Time.now ())
 
-let info content = log ("[Info][" ^ time () ^ "] " ^ content ^ "\n")
+let info content = log {%eml|[Info][<%- time () %>] <%- content %>|}
 
-let error content = log ("[Error][" ^ time () ^ "] " ^ content ^ "\n")
+let error content = log {%eml|[Error][<%- time () %>] <%- content %>|}
 
-let string_of_error e =
-  Error.pp Format.str_formatter e ;
-  Format.flush_str_formatter ()
+let string_of_error e = Format.asprintf "%a" Error.pp e
 
 let error_t reason e = error {%eml|<%- reason %> : <%- string_of_error e %>.|}

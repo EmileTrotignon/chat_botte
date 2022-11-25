@@ -31,7 +31,7 @@ module Deferred_or_error = struct
 
   let ( let* ) v f = Deferred.Or_error.map ~f v
 
-  let ( let+ ) v f = Deferred.Or_error.map v ~f
+  let ( let+ ) v f = Deferred.Or_error.bind v ~f
 
   let ( let- ) v f =
     let* v = v in
