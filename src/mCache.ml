@@ -4,6 +4,7 @@ open Disml
 module TmpMember = Member
 open Models
 module Member = TmpMember
+open Letop.Deferred
 
 let guild_of_id (guild_id : Guild_id.t) =
   Cache.(
@@ -31,7 +32,7 @@ module Cached (A : I) = struct
     let already_updating = Option.value ~default:false (Mvar.peek udpating) in
     if already_updating then return ()
     else
-      let%bind new_value = A.get_new arg in
+      let+ new_value = A.get_new arg in
       match new_value with
       | Ok new_value ->
           A.log_success new_value ;
@@ -45,7 +46,7 @@ module Cached (A : I) = struct
         Deferred.return value
     | None ->
         don't_wait_for (update arg) ;
-        let%map () = Mvar.value_available value in
+        let* () = Mvar.value_available value in
         Mvar.peek_exn value
 end
 
@@ -56,7 +57,7 @@ module CachedMembers = Cached (struct
 
   let get_new guild_id =
     let guild = guild_of_id guild_id in
-    let%map new_members = Guild.request_members guild in
+    let* new_members = Guild.request_members guild in
     Or_error.map ~f:Member.Set.of_list new_members
 
   let log_success new_members =
@@ -91,11 +92,11 @@ module CachedDM = Cached (struct
   type arg = Guild_id.t
 
   let get_new guild_id : t Deferred.Or_error.t =
-    let%bind members = CachedMembers.get guild_id in
+    let+ members = CachedMembers.get guild_id in
     members |> Member.Set.to_list
     |> Deferred.List.filter_map ~f:(fun member ->
            let user = Member.user member in
-           let%map channel = User_id.create_dm user.id in
+           let* channel = User_id.create_dm user.id in
            match channel with
            | Error e ->
                MLog.error_t "While opening a DM channel" e ;
@@ -128,6 +129,6 @@ let get_dms = CachedDM.get
 let update_dms = CachedDM.update
 
 let update_all guild_id =
-  let%bind () = update_members guild_id in
-  let%bind () = update_dms guild_id in
+  let+ () = update_members guild_id in
+  let+ () = update_dms guild_id in
   update_roles guild_id

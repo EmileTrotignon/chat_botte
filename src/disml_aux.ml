@@ -5,6 +5,7 @@ module TmpMember = Member
 open Models
 module Member = TmpMember
 include Disml_aux_kernel
+open Letop.Deferred
 
 (*
 let get_value = function
@@ -20,7 +21,7 @@ let message_of_id message_id channel_id =
   Channel_id.get_message ~id:(Message_id.get_id message_id) channel_id
 
 let member_of_id guild_id user_id =
-  let%map members = MCache.get_members guild_id in
+  let* members = MCache.get_members guild_id in
   match
     Member.Set.find
       ~f:(fun member ->
@@ -37,11 +38,11 @@ let member_of_id guild_id user_id =
 let member_of_user guild_id user = member_of_id guild_id User.(user.id)
 
 let members_of_role_id guild_id role_id =
-  let%map members = MCache.get_members guild_id in
+  let* members = MCache.get_members guild_id in
   Member.Set.filter ~f:(fun m -> Member.has_role m role_id) members
 
 let role_of_id guild_id role_id =
-  let%map roles = MCache.get_roles guild_id in
+  let* roles = MCache.get_roles guild_id in
   List.find ~f:(fun role -> Role_id.(Role.id role = role_id)) roles
 
 let user_is_admin guild_id user =
@@ -78,14 +79,14 @@ let long_reply message (content : string) =
         let hi = min (String.length content) hi in
         logged_reply message (String.sub ~pos:lo ~len:(hi - lo) content) )
   in
-  let%bind () =
+  let+ () =
     Deferred.List.iter
       ~f:(fun line ->
         let line = line ^ "\n" in
         if Buffer.length buffer + String.length line <= length_limit then
           Deferred.return @@ Buffer.add_string buffer line
         else
-          let%map () = empty_buffer () in
+          let* () = empty_buffer () in
           Buffer.add_string buffer line )
       content
   in

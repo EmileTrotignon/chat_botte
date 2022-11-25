@@ -5,19 +5,29 @@ module TmpMember = Member
 open Models
 module Member = TmpMember
 open Disml_aux
+open Letop.Deferred
+
+let _or_log r ~f ~msg =
+  match r with Ok v -> f v | Error e -> MLog.error_t msg e
+
+let deferred_or_log r ~f ~msg =
+  match r with Ok v -> f v | Error e -> Deferred.return @@ MLog.error_t msg e
+
+let option_of_result ~msg r =
+  match r with Ok v -> Some v | Error e -> MLog.error_t msg e ; None
 
 let do_with_cost ~guild_id ~action ~cost ~actor ~on_failure =
-  let%bind score = Data.score_of_user guild_id actor in
-  if score < cost then Deferred.return @@ on_failure ()
-  else
-    let%map () = Data.add_to_score guild_id actor.id (-cost) in
-    action ()
-(*
-let or_log ~f ~message_error =
-  match f () with Ok () -> () | Error e -> MLog.error_t message_error e
-
-let deferred_or_log ~f ~message_error =
-  match%map f () with Ok () -> () | Error e -> MLog.error_t message_error e *)
+  let msg = "do_with_cost" in
+  deferred_or_log
+    (Data.score_of_user guild_id (User.id actor))
+    ~msg
+    ~f:(fun score ->
+      if score < cost then Deferred.return @@ on_failure ()
+      else
+        deferred_or_log
+          (Data.add_to_score guild_id (User.id actor) (-cost))
+          ~msg
+          ~f:(fun () -> action ()) )
 
 let update_cached_members guild_id =
   don't_wait_for (MCache.update_members guild_id)
@@ -42,24 +52,28 @@ let or_error_iter_both ~ok ~error v =
   match v with Error e -> error e | Ok v -> ok v *)
 
 let score_message guild_id user score =
-  let%map member = member_of_user guild_id user in
-  let module Let_syntax = Result in
-  let%map member = member in
+  let* member = member_of_user guild_id user in
+  let open Letop.Result in
+  let* member = member in
   {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
 
 let score_message_of_user guild_id user =
-  let%bind member = member_of_user guild_id user in
-  let%map score = Data.score_of_id guild_id user.id in
-  let module Let_syntax = Result in
-  let%map member = member in
+  let* member = member_of_user guild_id user in
+  let open Letop.Result in
+  let+ score = Data.score_of_user guild_id user.id in
+  let* member = member in
   {%eml|/!\ @everyone /!\ Score of <%- Member.ping_text member %> is <%i- score %>.|}
 
 let score_messages guild_id users =
-  let%bind scored_users =
-    Deferred.List.map
+  let msg = "score_messages" in
+  let scored_users =
+    List.filter_map
       ~f:(fun user ->
-        Deferred.both (Deferred.return user) (Data.score_of_user guild_id user)
-        )
+        let open Letop.Option in
+        let* score =
+          Data.score_of_user guild_id (User.id user) |> option_of_result ~msg
+        in
+        (user, score) )
       users
   in
   let scored_users =
@@ -68,14 +82,14 @@ let score_messages guild_id users =
         -Int.compare score1 score2 )
       scored_users
   in
-  let%map messages =
+  let* messages =
     Deferred.List.map
       ~f:(fun (user, score) -> score_message guild_id user score)
       scored_users
   in
   let messages = Or_error.combine_errors messages in
-  let module Let_syntax = Result in
-  let%map messages = messages in
+  let open Letop.Result in
+  let* messages = messages in
   {%eml|<% List.iter (fun message -> %><%- message%>
 <%) messages ;%>|}
 
@@ -94,7 +108,7 @@ let get_score_of_author message = get_score message Message.(message.author)
 let get_scores_of_mentions message =
   (let Message.{mentions; mention_roles; guild_id; _} = message in
    let guild_id = Option.value_exn guild_id in
-   let%bind mentions_through_role =
+   let+ mentions_through_role =
      Deferred.List.map
        ~f:(fun role -> members_of_role_id guild_id role)
        mention_roles
@@ -114,7 +128,7 @@ let get_scores_of_mentions message =
 let get_scores_of_everyone message =
   (let Message.{guild_id; _} = message in
    let guild_id = Option.value_exn guild_id in
-   let%bind members = MCache.get_members guild_id in
+   let+ members = MCache.get_members guild_id in
    let members = Member.Set.elements members in
    let members = List.map ~f:(fun m -> m.user) members in
    match%map score_messages guild_id members with
@@ -136,7 +150,7 @@ let get_smart_scores prefix message =
        @@ logged_reply message
             {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
    | Ok rolelang_expr -> (
-       let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+       let+ mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
        let mentions =
          mentions |> Member.Set.elements
          |> List.map ~f:(fun m -> Member.(m.user))
@@ -150,9 +164,9 @@ let get_smart_scores prefix message =
 
 let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
     =
-  ( match%bind message_of_id message_id channel_id with
+  ( match%map message_of_id message_id channel_id with
   | Error e ->
-      Deferred.return @@ MLog.error_t "While updating score" e
+      MLog.error_t "While updating score" e
   | Ok message ->
       let user = Message.(message.author) in
       (* Reacts by the author of the message are not taken into account *)
@@ -160,8 +174,12 @@ let update_score ?(remove = false) user_id guild_id emoji message_id channel_id
         let guild_id = Option.value_exn guild_id in
         let score = score_of_pemoji emoji in
         let score = if remove then -score else score in
-        Data.add_to_score guild_id user.id score
-      else Deferred.return () )
+        match Data.add_to_score guild_id user.id score with
+        | Ok () ->
+            ()
+        | Error e ->
+            MLog.error_t "While updating score" e
+      else () )
   |> don't_wait_for
 
 let update_score_add react =
@@ -202,7 +220,7 @@ let scores_from_history_channel guild_id add_score (channel : Channel.t) =
   | `GuildText text_channel ->
       let title = Channel.(text_channel.name) in
       MLog.info {%eml|Getting messages of channel <%-title%>|} ;
-      let%map () =
+      let* () =
         Message_history.iter_deferred
           ~f:(update_score_from_message guild_id add_score)
           channel
@@ -222,25 +240,27 @@ let scores_from_history guild_id =
     let score = score + previous_score in
     Member.Hashtbl.set scores ~key:member ~data:score
   in
-  let%map () =
+  let* () =
     channels
     |> Deferred.List.iter ~f:(scores_from_history_channel guild_id add_score)
   in
   scores
 
 let set_scores guild_id scores =
-  Member.Hashtbl.fold ~init:(Deferred.return ()) scores
-    ~f:(fun ~key ~data acc ->
-      let%bind () = acc in
-      Data.set_score guild_id key.user.id data )
+  Member.Hashtbl.iteri scores ~f:(fun ~key ~data ->
+      match Data.set_score guild_id key.user.id data with
+      | Error e ->
+          MLog.error_t "While setting score" e
+      | Ok () ->
+          () )
 
 let crunch_scores message =
   let guild_id = Option.value_exn Message.(message.guild_id) in
-  (let%bind scores = scores_from_history guild_id in
+  (let* scores = scores_from_history guild_id in
    set_scores guild_id scores )
   |> don't_wait_for
 
-let stupid_message message =
+let delete_message message =
   ( match%map Message.delete message with
   | Error e ->
       MLog.error_t "While deleting stupid message" e
@@ -264,23 +284,27 @@ let remove_roles roles member =
     roles
 
 let rank_members message =
+  let msg = "rank_members" in
   let guild_id = Option.value_exn Message.(message.guild_id) in
   don't_wait_for
-  @@ let%bind members = MCache.get_members guild_id in
-     let%map members =
-       members |> Member.Set.elements
-       |> Deferred.List.map ~f:(fun member ->
-              Deferred.both (Deferred.return member)
-                (Data.score_of_user guild_id Member.(member.user)) )
-       |> Deferred.map
-            ~f:(List.sort ~compare:(fun (_, s1) (_, s2) -> compare s1 s2))
+  @@ let* members = MCache.get_members guild_id in
+     let members =
+       members |> Member.Set.to_list
+       |> List.filter_map ~f:(fun member ->
+              let open Letop.Option in
+              let* score =
+                Data.score_of_user guild_id (member |> Member.user |> User.id)
+                |> option_of_result ~msg
+              in
+              (member, score) )
+       |> List.sort ~compare:(fun (_, s1) (_, s2) -> compare s1 s2)
      in
      let n = List.length members in
      let n_ranks = Array.length Config.Roles.ranks in
      List.iteri
        ~f:(fun i (member, _score) ->
          (let role_id = `Role_id Config.Roles.ranks.(i * n_ranks / n) in
-          let%bind role = role_of_id guild_id role_id in
+          let+ role = role_of_id guild_id role_id in
           match role with
           | None ->
               Deferred.return
@@ -291,7 +315,7 @@ let rank_members message =
                 (* @@ logged_reply message
                      {|/!\ @everyone /!\ <%- Member.ping_text member %> keeps rank <%- role_repr %>.|} *)
               else
-                let%bind () = remove_roles Config.Roles.ranks member in
+                let+ () = remove_roles Config.Roles.ranks member in
                 match%map Member.add_role ~role member with
                 | Error e ->
                     MLog.error_t "While adding role" e
@@ -311,14 +335,6 @@ let chance_of_delete chance message =
        | Ok () ->
            ()
 
-let delete_message message =
-  don't_wait_for
-  @@ match%map Message.delete message with
-     | Error e ->
-         MLog.error_t "While removing message" e
-     | Ok () ->
-         ()
-
 let send_dm message =
   (let Message.{guild_id; content; _} = message in
    let guild_id = Option.value_exn guild_id in
@@ -326,7 +342,7 @@ let send_dm message =
    let prefix = Config.command_prefix ^ prefix in
    let prefix_size = String.length prefix in
    let content = String.chop_prefix_exn ~prefix content in
-   let%bind dms = MCache.get_dms guild_id in
+   let+ dms = MCache.get_dms guild_id in
    let roleexpr, answer_content =
      match String.lsplit2 content ~on:'=' with
      | None ->
@@ -343,7 +359,7 @@ let send_dm message =
        @@ logged_reply message
             {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
    | Ok rolelang_expr -> (
-       let%bind mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+       let+ mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
        let actor = Message.(message.author) in
        match%bind member_of_user guild_id actor with
        | Error e ->
@@ -359,22 +375,29 @@ let send_dm message =
                  "Commence par regarder ton score dans les yeux avant de \
                   chercher a pinguer les autres." )
              ~action:(fun () ->
-               Member.Set.iter mentions ~f:(fun member ->
-                   member |> Member.user |> User.Map.find dms
-                   |> (function
-                        | None ->
-                            let block_bot_cost = -10 in
-                            logged_reply message
-                              {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
+               Deferred.return
+               @@ Member.Set.iter mentions ~f:(fun member ->
+                      member |> Member.user |> User.Map.find dms
+                      |> function
+                      | None -> (
+                          let block_bot_cost = -10 in
+                          logged_reply message
+                            {%eml|<%- User.mention member.user %> se croit tout permis et bloque le bot. Bouuuu ! <%i- block_bot_cost %> points !|} ;
+                          match
                             Data.add_to_score guild_id member.user.id
                               block_bot_cost
-                        | Some channel -> (
-                            match%map Channel.say answer_content channel with
-                            | Error e ->
-                                MLog.error_t "While sending dm" e
-                            | Ok _ ->
-                                () ) )
-                   |> don't_wait_for ) ) ) )
+                          with
+                          | Ok () ->
+                              ()
+                          | Error e ->
+                              MLog.error_t "While sending dm" e )
+                      | Some channel ->
+                          ( match%map Channel.say answer_content channel with
+                          | Error e ->
+                              MLog.error_t "While sending dm" e
+                          | Ok _ ->
+                              () )
+                          |> don't_wait_for ) ) ) )
   |> don't_wait_for
 
 let change_nick message =
@@ -394,9 +417,7 @@ let change_nick message =
            @@ logged_reply message
                 {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
        | Ok rolelang_expr -> (
-           let%bind mentions =
-             Rolelang_interpretor.eval guild_id rolelang_expr
-           in
+           let+ mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
            let mentions =
              mentions |> Member.Set.elements
              |> List.map ~f:(fun m -> Member.(m.user))
@@ -422,25 +443,25 @@ let change_nick message =
                        then 0
                        else Config.change_nick_cost
                      in
-                     Deferred.join
-                     @@ do_with_cost ~guild_id ~cost ~actor:author
-                          ~on_failure:(fun () ->
-                            Deferred.return
-                            @@ logged_reply message
-                                 "Commence par regarder ton score dans les \
-                                  yeux avant de chercher a affubler les \
-                                  autres." )
-                          ~action:(fun () ->
-                            let%bind () =
-                              Data.add_to_score guild_id author.id
-                                (-Config.change_nick_cost)
-                            in
-                            match%map Member.change_nick member new_nick with
-                            | Ok () ->
-                                logged_reply message
-                                  "Tu as bien affublé ce gros bouffon."
-                            | Error e ->
-                                MLog.error_t "while affubling" e ) )
+                     do_with_cost ~guild_id ~cost ~actor:author
+                       ~on_failure:(fun () ->
+                         logged_reply message
+                           "Commence par regarder ton score dans les yeux \
+                            avant de chercher a affubler les autres." )
+                       ~action:(fun () ->
+                         match
+                           Data.add_to_score guild_id author.id
+                             (-Config.change_nick_cost)
+                         with
+                         | Error e ->
+                             Deferred.return @@ MLog.error_t "while affubling" e
+                         | Ok () -> (
+                             match%map Member.change_nick member new_nick with
+                             | Ok () ->
+                                 logged_reply message
+                                   "Tu as bien affublé ce gros bouffon."
+                             | Error e ->
+                                 MLog.error_t "while affubling" e ) ) )
            | _ :: _ ->
                Deferred.return
                @@ logged_reply message

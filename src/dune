@@ -1,20 +1,6 @@
 (executable
  (name main)
  (public_name chat-botte)
- (libraries
- pprint
-  rolelang
-  disml
-  sexplib
-  astring
-  cohttp
-  fmt
-  git
-  irmin
-  irmin-git
-  irmin-unix
-  ppx_irmin
-  lwt
-  lwt.unix)
+ (libraries pprint rolelang disml sexplib astring cohttp fmt bos async core)
  (preprocess
   (pps ppx_sexp_conv embedded_ocaml_templates.ppx_eml ppx_let)))

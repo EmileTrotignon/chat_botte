@@ -4,6 +4,7 @@ open Disml
 module TmpMember = Member
 open Models
 module Member = TmpMember
+open Letop.Deferred
 
 let rec iter_and_last ~f messages =
   match messages with
@@ -19,10 +20,10 @@ let rec iter_and_last_deferred ~f messages =
   | [] ->
       Deferred.return None
   | [message] ->
-      let%map () = f message in
+      let* () = f message in
       Some message
   | message :: messages ->
-      let%bind () = f message in
+      let+ () = f message in
       iter_and_last_deferred ~f messages
 
 let delete_tmp_message message =

@@ -5,6 +5,7 @@ open Models
 module Member = TmpMember
 open Async
 open Disml_aux
+open Letop.Deferred
 
 (* Create a function to handle message_create. *)
 
@@ -27,7 +28,7 @@ let commands help =
         (HasRole (`Role_id Config.Roles.warning))
         "Supprime le message avec proba .33"
         (Commands.chance_of_delete 0.33)
-    ; v (And [Prefix "ping"; Admin]) "Pingue les heureux élus" Commands.send_dm
+    ; v (Prefix "ping") "Pingue les heureux élus" Commands.send_dm
     ; v (ExactPrefix "help") "Affiche l'aide" help ]
 
 let rec help m = logged_reply m (Message_command.to_string (commands help))
@@ -36,9 +37,9 @@ let commands = commands help
 
 let hidden_commands =
   Message_command.
-    [ v (Substring "gJirxeFwVzA") "Serge ..." Commands.stupid_message
-    ; v (Substring "GASPAR") "Serge ..." Commands.stupid_message
-    ; v (Substring "CANAR") "Serge ..." Commands.stupid_message ]
+    [ v (Substring "gJirxeFwVzA") "Serge ..." Commands.delete_message
+    ; v (Substring "GASPAR") "Serge ..." Commands.delete_message
+    ; v (Substring "CANAR") "Serge ..." Commands.delete_message ]
 
 let commands = commands @ hidden_commands
 
@@ -47,7 +48,7 @@ let execute_commands commands message =
   guild_id
   |> Option.iter ~f:(fun guild_id ->
          don't_wait_for
-         @@ let%bind is_admin = user_is_admin guild_id author in
+         @@ let+ is_admin = user_is_admin guild_id author in
             match%map member_of_user guild_id author with
             | Error e ->
                 MLog.error_t "While converting author to member " e
@@ -91,7 +92,7 @@ let main () =
   (Client.message_update :=
      fun update ->
        don't_wait_for
-       @@ let%map message =
+       @@ let* message =
             Event.MessageUpdate.(message_of_id update.id update.channel_id)
           in
           (* Yojson.Safe.pretty_to_channel stdout
@@ -128,7 +129,7 @@ let main () =
   Client.reaction_add := Commands.update_score_add ;
   Client.reaction_remove := Commands.update_score_remove ;
   (* Start the client. It's recommended to load the token from an env var or other config file. *)
-  let%map _client = Client.start Config.token in
+  let* _client = Client.start Config.token in
   MLog.info "Connected successfully"
 
 let main () = don't_wait_for (main ())

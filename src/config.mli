@@ -4,7 +4,7 @@ val reacts : int Core.String.Map.t
 
 val log_file : out_channel
 
-val database_location : string
+val database_location : Fpath.t
 
 module Roles : sig
   val admins : int array
