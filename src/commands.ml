@@ -415,3 +415,43 @@ let change_nick message =
               long_reply message
                 "Can only change the nickname of one member, you mentionned \
                  zero" ) )
+
+let set_score message =
+  let Message.{guild_id; content; _} = message in
+  MLog.info "set_score" ;
+  let prefix = "setscore" in
+  let prefix = Config.command_prefix ^ prefix in
+  let prefix_size = String.length prefix in
+  let content = String.chop_prefix_exn ~prefix content in
+  match String.lsplit2 content ~on:'=' with
+  | None ->
+      long_reply message "Did not find '=' in message"
+  | Some (person, new_score) -> (
+      let guild_id = Option.value_exn guild_id in
+      match Rolelang.parse person with
+      | Error (text, spos, epos) ->
+          long_reply message
+            {%eml|<%-text%> from char <%i- prefix_size + spos.pos_cnum%> to  <%i- prefix_size + epos.pos_cnum%>.|}
+      | Ok rolelang_expr -> (
+          let open Letop.Deferred in
+          let+ mentions = Rolelang_interpretor.eval guild_id rolelang_expr in
+          let mentions =
+            mentions |> Member.Set.elements
+            |> List.map ~f:(fun m -> Member.(m.user))
+          in
+          match mentions with
+          | [member] -> (
+              MLog.info new_score ;
+              match new_score |> String.strip |> int_of_string_opt with
+              | None ->
+                  long_reply message
+                    {%eml|This is not a valid number : <%S- new_score %>|}
+              | Some new_score ->
+                  Deferred.return
+                  @@ Data.set_score guild_id (User.id member) new_score )
+          | _ :: _ ->
+              long_reply message
+                "Can only set the score of one member, you mentionned multiple."
+          | [] ->
+              long_reply message
+                "Can only set the score of one member, you mentionned zero" ) )

@@ -46,7 +46,8 @@ let hidden_commands =
   Message_command.
     [ v (Substring "gJirxeFwVzA") "Serge ..." Commands.delete_message
     ; v (Substring "GASPAR") "Serge ..." Commands.delete_message
-    ; v (Substring "CANAR") "Serge ..." Commands.delete_message ]
+    ; v (Substring "CANAR") "Serge ..." Commands.delete_message 
+    ; v (And [Prefix "setscore"; Admin]) "Set the score" Commands.set_score]
 
 let commands = commands @ hidden_commands
 

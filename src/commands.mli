@@ -34,3 +34,5 @@ val delete_message : t
 val change_nick : t
 
 val send_dm : t
+
+val set_score : t
