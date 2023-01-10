@@ -9,7 +9,6 @@ let log channel content =
 
 let log content =
   (* https://programmierfrage.com/items/using-discord-api-curl-to-send-a-discord-dm *)
-  log stdout content ;
   log Config.log_file content
 
 let time () = Format.asprintf "%a" Time.pp (Time.now ())
